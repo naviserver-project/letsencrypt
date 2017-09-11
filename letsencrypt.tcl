@@ -26,10 +26,10 @@ namespace eval ::letsencrypt {
     #
     # When developing the interface (e.g. improving this script), you
     # might consider using the staging API of letsencrypt instead of
-    # the production API to void these limits. In such cases, set the
-    # following variable to 0.
+    # the production API to void these constraints.
     #
-    set productionAPI 1
+    set API "production"
+    #set API "staging"
 }
 
 ##########################################################################
@@ -53,8 +53,8 @@ namespace eval ::letsencrypt {
             </head>
             <body>
             <form method='post' action='[ns_conn url]'>
-            Please enter the domain name for the SSL certificate:<br>
-            <input name="domain">
+            Please enter the domain names for the SSL certificate:<br>
+            <input name="domains" size="80">
             <input type='submit' value='Submit'>
             </form>
             </body>
@@ -184,42 +184,39 @@ namespace eval ::letsencrypt {
     # ########################## #
     proc getCertificate {} {
 
-        set domain [ns_queryget domain]
+        set domain [ns_queryget domains]
 
         # if a domain name was already submitted in the form,
         # a link is provided to the user to start the main procedure
-        if {$domain eq ""} {
+        if {$domains eq ""} {
             domainForm
             return
         }
-        set sans [lrange $domain 1 end]
-        set domain [lindex $domain 0]
+
+        set domain [lindex $domains 0]
+        set sans   [lrange $domains 1 end]
+
         set starturl "[ns_conn proto]://$domain[ns_conn url]"
 
+        set config {
+            staging    {url https://acme-staging.api.letsencrypt.org/directory}
+            production {url https://acme-v01.api.letsencrypt.org/directory}
+        }
+
         ns_headers 200 text/html
-        ns_log notice  "----- START -----"
+        ns_write "<h3>Obtaining a certificate from Let's Encrypt using \
+                  the [string totitle $::letsencrypt::API] API:</h3>"
 
         # ################################### #
         # ----- get urls from directory ----- #
         # ################################### #
-        ns_write "Fetching Let's Encrypt URLs from directory...<br>"
 
-        #
-        # Choose between production and staging API:
-        #
-        if {$::letsencrypt::productionAPI} {
-            # production API:
-            set url https://acme-v01.api.letsencrypt.org/directory
-        } else {
-            # staging API:
-            set url https://acme-staging.api.letsencrypt.org/directory
-        }
+        set url [dict get $config $::letsencrypt::API url]
 
         set id [ns_http queue $url]
         ns_http wait -status S -result R $id
 
         set urls [json::json2dict $R]
-
         set key_change  [dict get $urls key-change]
         set new_authz   [dict get $urls new-authz]
         set new_cert    [dict get $urls new-cert]
@@ -241,10 +238,8 @@ namespace eval ::letsencrypt {
         #
         for {set count 0} {$count < 10} {incr count} {
             set rsa_key [pki::rsa::generate 2048]
-            array set key $rsa_key
-
-            set modulus [base64url [::pki::_dec_to_ascii $key(n)]]
-            set exponent [base64url [::pki::_dec_to_ascii $key(e)]]
+            set modulus  [base64url [::pki::_dec_to_ascii [dict get $rsa_key n]]]
+            set exponent [base64url [::pki::_dec_to_ascii [dict get $rsa_key e]]]
 
             # ##################### #
             # ----- get nonce ----- #
@@ -289,6 +284,7 @@ namespace eval ::letsencrypt {
         set nonce [ns_set get $replyHeaders "replay-nonce"]
         set location [ns_set get $replyHeaders "location"]
 
+
         # parse link for next step from reply headers
         foreach link [ns_set array $replyHeaders] {
             regexp {^<(.*)>;rel="terms-of-service"} $link . url
@@ -302,79 +298,83 @@ namespace eval ::letsencrypt {
         # ######################### #
         # ----- authorization ----- #
         # ######################### #
-        ns_write "Authorizing account... "
         ns_log notice  "AUTHORIZATION:"
 
-        set nonce [ns_set get $replyHeaders "replay-nonce"]
-        set payload [subst {{"resource": "new-authz", "identifier": {"type": "dns", "value": "$domain"}}}]
+        foreach d $domains {
+            ns_write "<br>Authorizing account for domain <strong>$d</strong>... "
 
-        set jws [jwsignature $rsa_key $modulus $exponent $nonce $payload]
-        lassign [postRequest $jws $new_authz] httpStatus result replyHeaders
-        ns_write "returned HTTP status $httpStatus<br>"
+            set nonce [ns_set get $replyHeaders "replay-nonce"]
+            set payload [subst {{"resource": "new-authz", "identifier": {"type": "dns", "value": "$d"}}}]
 
-        # ##################### #
-        # ----- challenge ----- #
-        # ##################### #
-        ns_write "Getting HTTP challenge... "
-        ns_log notice  "CHALLENGE:"
+            set jws [jwsignature $rsa_key $modulus $exponent $nonce $payload]
+            lassign [postRequest $jws $new_authz] httpStatus result replyHeaders
+            ns_write "returned HTTP status $httpStatus<br>"
 
-        set nonce [ns_set get $replyHeaders "replay-nonce"]
-        set authorization [ns_set get $replyHeaders "location"]
-        set challenges [dict get [json::json2dict $result] challenges]
+            # ##################### #
+            # ----- challenge ----- #
+            # ##################### #
+            ns_write "... getting HTTP challenge... "
+            ns_log notice  "CHALLENGE:"
 
-        # parse HTTP challenge
-        foreach entry $challenges {
-            if {[dict filter $entry value "http-01"] ne ""} {
-                set url [dict get $entry uri]
-                set token [dict get $entry token]
+            set nonce [ns_set get $replyHeaders "replay-nonce"]
+            set authorization [ns_set get $replyHeaders "location"]
+            set challenges [dict get [json::json2dict $result] challenges]
+
+            # parse HTTP challenge
+            foreach entry $challenges {
+                if {[dict filter $entry value "http-01"] ne ""} {
+                    set url [dict get $entry uri]
+                    set token [dict get $entry token]
+                }
             }
-        }
 
-        # generate thumbprint
-        set pk [subst {{"e":"$exponent","kty":"RSA","n":"$modulus"}}]
-        set thumbprint [binary format H* [ns_md string -digest sha256 $pk]]
-        set thumbprint64 [base64url $thumbprint]
+            # generate thumbprint
+            set pk [subst {{"e":"$exponent","kty":"RSA","n":"$modulus"}}]
+            set thumbprint [binary format H* [ns_md string -digest sha256 $pk]]
+            set thumbprint64 [base64url $thumbprint]
 
-        # provide HTTP resource to fulfill HTTP challenge
-        file mkdir [ns_server pagedir]/.well-known/acme-challenge
-        writeFile [ns_server pagedir]/.well-known/acme-challenge/$token $token.$thumbprint64
+            # provide HTTP resource to fulfill HTTP challenge
+            file mkdir [ns_server pagedir]/.well-known/acme-challenge
+            writeFile [ns_server pagedir]/.well-known/acme-challenge/$token $token.$thumbprint64
 
-        set payload [subst {{"resource": "challenge", "keyAuthorization": "$token.$thumbprint64"}}]
+            set payload [subst {{"resource": "challenge", "keyAuthorization": "$token.$thumbprint64"}}]
 
-        set jws [jwsignature $rsa_key $modulus $exponent $nonce $payload]
-        lassign [postRequest $jws $url] httpStatus result replyHeaders
-        ns_write "returned HTTP status $httpStatus<br><br>"
+            set jws [jwsignature $rsa_key $modulus $exponent $nonce $payload]
+            lassign [postRequest $jws $url] httpStatus result replyHeaders
+            ns_write "returned HTTP status $httpStatus<br>"
 
-        # ###################### #
-        # ----- validation ----- #
-        # ###################### #
-        ns_write "Validating the challenge...<br>"
-        ns_log notice  "VALIDATION:"
+            # ###################### #
+            # ----- validation ----- #
+            # ###################### #
+            ns_write "... validating the challenge... "
+            ns_log notice  "VALIDATION:"
 
-        set nonce [ns_set get $replyHeaders "replay-nonce"]
-        regexp {^<(.*)>;rel="up"} [ns_set get $replyHeaders "link"] . url
-        set status [dict get [json::json2dict $result] status]
+            set nonce [ns_set get $replyHeaders "replay-nonce"]
+            regexp {^<(.*)>;rel="up"} [ns_set get $replyHeaders "link"] . url
+            set status [dict get [json::json2dict $result] status]
 
-        ns_write "Validation status: $status<br>"
-        #ns_write "<pre>$result</pre>[printHeaders $replyHeaders]<br>"
+            ns_write "status: $status<br>"
+            #ns_write "<pre>$result</pre>[printHeaders $replyHeaders]<br>"
 
-        # check until validation is finished
-        while {$status eq "pending"} {
-            ns_write "Retry after one second....<br>"
-            ns_sleep 1
+            # check until validation is finished
+            while {$status eq "pending"} {
+                ns_write "... retry after one second... "
+                ns_sleep 1
 
-            set id [ns_http queue $url]
-            ns_http wait -status S -result R -headers $replyHeaders $id
+                set id [ns_http queue $url]
+                ns_http wait -status S -result R -headers $replyHeaders $id
 
-            #ns_log notice  "status: $S"
-            #ns_log notice  "result: $R"
-            #ns_log notice  "replyheaders:"
-            #ns_log notice  [ns_set array $replyHeaders]
+                #ns_log notice  "status: $S"
+                #ns_log notice  "result: $R"
+                #ns_log notice  "replyheaders:"
+                #ns_log notice  [ns_set array $replyHeaders]
 
-            set status [dict get [json::json2dict $R] status]
-            ns_write "Validation status: $status<br>"
-            if {$status ni {"valid" "pending"}} {
-                ns_write "<pre>$R</pre>[printHeaders $replyHeaders]<br>"
+                set status [dict get [json::json2dict $R] status]
+                ns_write "status: $status<br>"
+                if {$status ni {"valid" "pending"}} {
+                    ns_write "<pre>$R</pre>[printHeaders $replyHeaders]<br>"
+                    break
+                }
             }
         }
 
@@ -388,7 +388,7 @@ namespace eval ::letsencrypt {
         # ########################### #
         # ----- get certificate ----- #
         # ########################### #
-        ns_write "Generating RSA key pair for SSL certificate... "
+        ns_write "<br>Generating RSA key pair for SSL certificate... "
 
         #
         # Make sure, the sslpath exists
@@ -501,7 +501,7 @@ namespace eval ::letsencrypt {
         exec -ignorestderr -- openssl dhparam 2048 >> $pemFile 2> /dev/null
         ns_write " DONE<br><br>"
 
-        ns_write "Certificate successfully installed in: <strong>$pemFile</strong><br><br>"
+        ns_write "New certificate successfully installed in: <strong>$pemFile</strong><br><br>"
 
         # ############################### #
         # ----- Update configuration ---- #
@@ -516,7 +516,7 @@ namespace eval ::letsencrypt {
         # ... and update config file by reading its content and update
         # it in memory before writing it back to disk.
         #
-        ns_write "Adapting config file to use the new certificate:<br>"
+        ns_write "Checking the NaviServer config file: "
         set C [readFile [ns_info config]]
         set origConfig $C
 
@@ -530,7 +530,7 @@ namespace eval ::letsencrypt {
             }
         }
         if {$nssslLoaded} {
-            ns_write "The nsssl driver module is apparently already loaded."
+            ns_write "The nsssl driver module is apparently already loaded.<br>"
         } else {
             ns_write "The nsssl driver module is apparently already not loaded, try to fix this.<br>"
 
@@ -575,8 +575,8 @@ ns_section    ns/server/\${server}/module/nsssl
          X-Content-Type-Options nosniff
       }
 }]
-        } else {
-            ns_write [subst {... updating the certificate in config file<br>}]
+        } elseif {![regexp "ns_param\\s+certificate\\s+$pemFile" $C]} {
+            ns_write {... updating the certificate entry<br>}
             regsub -all {ns_param\s+certificate\s+[^\n]+} $C "ns_param   certificate   $pemFile" C
         }
 
@@ -585,12 +585,19 @@ ns_section    ns/server/\${server}/module/nsssl
         #
         if {$origConfig ne $C} {
             writeFile [ns_info config] $C
+            ns_write [subst {
+                Updating NaviServer config file<br>
+                Please check updated config file: <strong>[ns_info config]</strong>
+                <br>and update it (if necessary)<p>
+            }]
+        } else {
+            ns_write {No need to update the NaviServer config file.<br>}
         }
 
         ns_write [subst {<br>
-            Please check updated config file: <strong>[ns_info config]</strong>
-            <p>Update it if necessary and restart your NaviServer instance. <br>You should be able to browse to
-            <a href="https://$domain">https://$domain</a> afterwards.
+            To use the updated configuration, restart your NaviServer instance
+            and check results on <a href="https://$domain">https://$domain</a>.
+            <p>
         }]
     }
 
