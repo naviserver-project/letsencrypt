@@ -1,7 +1,7 @@
 Let's Encrypt ACME client for NaviServer
 ========================================
 
-Release 0.1
+Release 0.2
 -----------
 
     Florian Hanika <florian.hanika@gmail.com>
@@ -24,6 +24,7 @@ Requirements:
 
 - NaviServer (4.99.12 or newer) with the integrated OpenSSL support
   activated.
+- Next Scripting Framework 2.0 or newer (used for crypto support)
 - Tcllib (e.g. 1.15) installed on the Tcl library search path.
 - OpenSSL binaries installed (the "openssl" command will be executed
   during certificate generation via "exec")

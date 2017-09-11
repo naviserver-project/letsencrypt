@@ -2,14 +2,12 @@
 # letsencrypt.tcl --
 #
 #   A small Let's Encrypt client for NaviServer implemented in Tcl.
-#
 #   To use it, set enabled to 1 and drop it somewhere under
 #   NaviServer pageroot which is usually /usr/local/ns/pages and point
 #   browser to it.
 #
 #
-# If this pages needs to be restricted assign username and password
-# here.
+# If this page needs to be restricted, configure the following three variables:
 #
 set user ""
 set password ""
@@ -44,7 +42,7 @@ package require json
 package require pki
 
 namespace eval ::letsencrypt {
-    
+
     # ####################### #
     # ----- domain form ----- #
     # ####################### #
@@ -69,6 +67,49 @@ namespace eval ::letsencrypt {
             append result "   $k: $v\n"
         }
         append result "</pre>\n"
+    }
+
+    nsf::proc readFile {{-binary:switch f} fileName} {
+        set F [open $fileName r]
+        if {$binary} { fconfigure $F -translation binary }
+        set content [read $F]
+        close $F
+        return $content
+    }
+
+    nsf::proc writeFile {{-binary:switch f} {-append:switch f} fileName content} {
+        set mode [expr {$append ? "a" : "w"}]
+        set F [open $fileName $mode]
+        if {$binary} { fconfigure $F -translation binary }
+        puts -nonewline $F $content
+        close $F
+    }
+
+    # ################################# #
+    # ----- produce backup files -----  #
+    # ################################# #
+
+    nsf::proc backup {{-mode rename} fileName} {
+        set backupFileName ""
+        if {[file exists $fileName]} {
+            #
+            # If the base file exists, make a backup based on the
+            # content (using a sha256 checksum). Using checksums is
+            # independent of timestamps and makes sure to prevent loss
+            # of data (e.g. config files). If we have already a backup
+            # file, there is nothing to do.
+            #
+            set backupFileName $fileName.[ns_md file -digest sha256 $fileName]
+            if {![file exists $backupFileName]} {
+                file $mode -force $fileName $backupFileName
+                ns_write "Make backup of $fileName"
+            }
+        } else {
+            #
+            # No need to make a backup, file does not exist yet
+            #
+        }
+        return $backupFileName
     }
 
     # ################################# #
@@ -112,8 +153,7 @@ namespace eval ::letsencrypt {
             "signature": "$signature64"
         }}]
 
-        ns_log notice "payload:\n$payload\n"
-        ns_log notice "jws:\n$jws\n"
+        ns_log notice "jwsignature payload:\n$payload\njws:\n$jws"
         return $jws
     }
 
@@ -130,10 +170,10 @@ namespace eval ::letsencrypt {
         set id [ns_http queue -method POST -headers $queryHeaders -body $jws $url]
         ns_http wait -status S -result R -headers $replyHeaders $id
 
-        ns_log notice  "status: $S"
-        ns_log notice  "result: $R"
-        ns_log notice  "replyheaders:"
-        ns_log notice  [ns_set array $replyHeaders]
+        #ns_log notice  "status: $S"
+        #ns_log notice  "result: $R"
+        #ns_log notice  "replyheaders:"
+        #ns_log notice  [ns_set array $replyHeaders]
 
         # return status, result and replyheaders in a list
         return [list $S $R $replyHeaders]
@@ -152,6 +192,8 @@ namespace eval ::letsencrypt {
             domainForm
             return
         }
+        set sans [lrange $domain 1 end]
+        set domain [lindex $domain 0]
         set starturl "[ns_conn proto]://$domain[ns_conn url]"
 
         ns_headers 200 text/html
@@ -194,8 +236,10 @@ namespace eval ::letsencrypt {
         # ############################ #
         ns_write "Generating RSA key pair for Let's Encrypt account registration...<br>"
 
-        # repeat until registration was successful
-        while {1} {
+        #
+        # Repeat max 10 times until registration was successful
+        #
+        for {set count 0} {$count < 10} {incr count} {
             set rsa_key [pki::rsa::generate 2048]
             array set key $rsa_key
 
@@ -231,8 +275,8 @@ namespace eval ::letsencrypt {
         ns_write "Registration ended with status $status.<br>"
 
         if {$status >= 400} {
-            ns_write "Registration ended with error."
-            ns_write "$text ns_write [printHeaders $replyHeaders] <br>"
+            ns_write "Registration ended with error $status<br>"
+            ns_write "[printHeaders $replyHeaders]<br>$text<br>"
             return
         }
 
@@ -293,9 +337,7 @@ namespace eval ::letsencrypt {
 
         # provide HTTP resource to fulfill HTTP challenge
         file mkdir [ns_server pagedir]/.well-known/acme-challenge
-        set F [open [ns_server pagedir]/.well-known/acme-challenge/$token w]
-        puts $F $token.$thumbprint64
-        close $F
+        writeFile [ns_server pagedir]/.well-known/acme-challenge/$token $token.$thumbprint64
 
         set payload [subst {{"resource": "challenge", "keyAuthorization": "$token.$thumbprint64"}}]
 
@@ -324,14 +366,14 @@ namespace eval ::letsencrypt {
             set id [ns_http queue $url]
             ns_http wait -status S -result R -headers $replyHeaders $id
 
-            ns_log notice  "status: $S"
-            ns_log notice  "result: $R"
-            ns_log notice  "replyheaders:"
-            ns_log notice  [ns_set array $replyHeaders]
+            #ns_log notice  "status: $S"
+            #ns_log notice  "result: $R"
+            #ns_log notice  "replyheaders:"
+            #ns_log notice  [ns_set array $replyHeaders]
 
             set status [dict get [json::json2dict $R] status]
             ns_write "Validation status: $status<br>"
-            if {$status ne "valid"} {
+            if {$status ni {"valid" "pending"}} {
                 ns_write "<pre>$R</pre>[printHeaders $replyHeaders]<br>"
             }
         }
@@ -348,27 +390,67 @@ namespace eval ::letsencrypt {
         # ########################### #
         ns_write "Generating RSA key pair for SSL certificate... "
 
-        # repeat until certificate was successfully obtained
-        while {1} {
-            ns_log notice  "CERTIFICATE:"
+        #
+        # Make sure, the sslpath exists
+        #
+        file mkdir $::letsencrypt::sslpath
+
+        #
+        # Repeat max 10 times until certificate was successfully obtained
+        #
+        for {set count 0} {$count < 10} {incr count} {
+            ns_log notice  "CERTIFICATE request:"
 
             set nonce [ns_set get $replyHeaders "replay-nonce"]
-            set cert_key [pki::rsa::generate 2048]
-            set csr [pki::pkcs::create_csr $cert_key [list CN $domain] 0]
+            set csrViaOpenSLL 1
+            if {$csrViaOpenSLL} {
+                set csrConfFile $::letsencrypt::sslpath/$domain.csr.conf
+                set csrFile     $::letsencrypt::sslpath/$domain.csr
+                set keyFile     $::letsencrypt::sslpath/$domain.key
+
+                exec -ignorestderr openssl genrsa -out $keyFile 2048
+                set privKey [readFile $keyFile]
+
+                file copy -force /etc/ssl/openssl.cnf $csrConfFile
+                if {[llength $sans] > 0} {
+                    set altNames {}; foreach alt $sans {lappend altNames DNS:$alt}
+                    writeFile -append $csrConfFile "\n\[SAN\]\nsubjectAltName=[join $altNames ,]\n"
+                    set extensions [list -reqexts SAN -extensions SAN]
+                } else {
+                    set extensions {}
+                }
+                exec openssl req -new -sha256 -outform DER {*}$extensions \
+                    -subj "/CN=$domain" -key $keyFile -config $csrConfFile -out $csrFile
+                set csr [readFile -binary $::letsencrypt::sslpath/$domain.csr]
+
+            } else {
+                set cert_key [pki::rsa::generate 2048]
+                set csr [pki::pkcs::create_csr $cert_key [list CN $domain] 0]
+                set privKey [pki::key $cert_key]
+            }
             set csr64 [base64url $csr]
             set payload [subst {{"resource": "new-cert", "csr": "$csr64", "authorizations": "$authorization"}}]
             ns_write "DONE<br>"
 
-            ns_write "Getting the certificate... "
+            ns_write "Getting the certificate for domain $domain, SANs $sans... "
             set jws [jwsignature $rsa_key $modulus $exponent $nonce $payload]
             lassign [postRequest $jws $new_cert] status result replyHeaders
             ns_write "returned HTTP status $status<br>"
 
             if {$status eq "400"} {
                 ns_write "Certificate request failed. Generating new RSA key pair... "
+                ns_log notice "CSR-Request returned 400\n"
+                ns_write "[printHeaders $replyHeaders]<br>$result<br>"
+
             } else {
                 break
             }
+        }
+
+        if {$status >= 400} {
+            ns_write "Certificate request ended with error $status.<br>"
+            ns_write "[printHeaders $replyHeaders]<br>$result<br>"
+            return
         }
 
         # ############################### #
@@ -376,26 +458,25 @@ namespace eval ::letsencrypt {
         # ############################### #
 
         ns_write "<br>Generate the certificate under $::letsencrypt::sslpath...<br>"
-        file mkdir $::letsencrypt::sslpath
 
         ns_log notice  "Storing certificate under $::letsencrypt::sslpath/$domain.cer"
-        set F [open $::letsencrypt::sslpath/$domain.cer w]
-        fconfigure $F -translation binary
-        puts -nonewline $F $result
-        close $F
+        writeFile -binary $::letsencrypt::sslpath/$domain.cer $result
 
         puts "Converting the certificate to PEM format to $::letsencrypt::sslpath/$domain.crt"
         exec openssl x509 -inform der -in $::letsencrypt::sslpath/$domain.cer -out $::letsencrypt::sslpath/$domain.crt
-        set F [open $::letsencrypt::sslpath/$domain.crt]
-        set cert [read $F]
-        close $F
+        set cert [readFile $::letsencrypt::sslpath/$domain.crt]
 
-        # save certificate and private key in single file in directory of nsssl module
-        ns_log notice  "Combining certificate and private key to $::letsencrypt::sslpath/$domain.pem"
-        set F [open $::letsencrypt::sslpath/$domain.pem w]
-        puts -nonewline $F $cert
-        puts -nonewline $F [pki::key $cert_key]
-        close $F
+        #
+        # build certificate in the file system. Backup old file if necessary.
+        #
+        set pemFile $::letsencrypt::sslpath/$domain.pem
+        backup $pemFile
+
+        # Save certificate and private key in single file in directory
+        # of nsssl module
+
+        ns_log notice  "Combining certificate and private key to $pemFile"
+        writeFile $pemFile "$cert$privKey"
 
         ns_log notice  "Deleting $domain.cer and $domain.crt under $::letsencrypt::sslpath/"
         file delete $::letsencrypt::sslpath/$domain.cer
@@ -408,45 +489,36 @@ namespace eval ::letsencrypt {
         set id [ns_http queue https://letsencrypt.org/certs/letsencryptauthorityx3.pem.txt]
         ns_http wait -status S -result R $id
         ns_write "returned HTTP status $S<br>"
-        
-        set F [open $::letsencrypt::sslpath/$domain.pem a]
-        puts -nonewline $F $R
-        close $F
-        
+
+        writeFile -append $pemFile $R
+
+
         # ############################### #
         # ----- Add DH parameters ------- #
         # ############################### #
 
-        ns_write "Adding DH parameters to $::letsencrypt::sslpath/$domain.pem (might take a while) ... "
-        exec -ignorestderr -- openssl dhparam 2048 >> $::letsencrypt::sslpath/$domain.pem
+        ns_write "Adding DH parameters to $pemFile (might take a while) ... "
+        exec -ignorestderr -- openssl dhparam 2048 >> $pemFile 2> /dev/null
         ns_write " DONE<br><br>"
 
-        ns_write "Certificate successfully installed in: <strong>$::letsencrypt::sslpath/$domain.pem</strong><br><br>"
-
-        # ############################### #
-        # ----- Produce backup ----- ---- #
-        # ############################### #
-
-        #
-        # Produce backup of old config file and write updated config
-        # file.  Add timestamp to name of backup file to avoid loosing
-        # configurations on multiple runs.
-        #
-        set backupConfigFile [ns_info config].bak.[clock seconds]
-
-        ns_write [subst {
-            Make backup of old config file in: $backupConfigFile<br>
-        }]
-        file copy -force [ns_info config] $backupConfigFile
+        ns_write "Certificate successfully installed in: <strong>$pemFile</strong><br><br>"
 
         # ############################### #
         # ----- Update configuration ---- #
         # ############################### #
 
+        #
+        # Make first a backup of old config file ...
+        #
+        set backupConfigFile [backup -mode copy [ns_info config]]
+
+        #
+        # ... and update config file by reading its content and update
+        # it in memory before writing it back to disk.
+        #
         ns_write "Adapting config file to use the new certificate:<br>"
-        set F [open [ns_info config]]
-        set C [read $F]
-        close $F
+        set C [readFile [ns_info config]]
+        set origConfig $C
 
         #
         # Check, if nsssl module is already loaded
@@ -490,7 +562,7 @@ ns_section    ns/server/${server}/modules
             }]
             append C [subst {
 ns_section    ns/server/\${server}/module/nsssl
-      ns_param   certificate   $::letsencrypt::sslpath/$domain.pem
+      ns_param   certificate   $pemFile
       ns_param   address       0.0.0.0
       ns_param   port          443
       ns_param   ciphers      "ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:ECDH+3DES:DH+3DES:RSA+AESGCM:RSA+AES:RSA+3DES:!aNULL:!MD5:!RC4"
@@ -505,12 +577,15 @@ ns_section    ns/server/\${server}/module/nsssl
 }]
         } else {
             ns_write [subst {... updating the certificate in config file<br>}]
-            regsub -all {ns_param\s+certificate\s+[^\n]+} $C "ns_param   certificate   $::letsencrypt::sslpath/$domain.pem" C
+            regsub -all {ns_param\s+certificate\s+[^\n]+} $C "ns_param   certificate   $pemFile" C
         }
 
-        set F [open [ns_info config] w]
-        puts -nonewline $F $C
-        close $F
+        #
+        # Rewrite config file only, when the content has changed
+        #
+        if {$origConfig ne $C} {
+            writeFile [ns_info config] $C
+        }
 
         ns_write [subst {<br>
             Please check updated config file: <strong>[ns_info config]</strong>
