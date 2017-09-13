@@ -284,7 +284,6 @@ namespace eval ::letsencrypt {
                 # ##################### #
                 set :replyHeaders [ns_set create]
                 set id [ns_http queue -method HEAD [:URL new-reg]]
-
                 ns_http wait -status S -result R -headers ${:replyHeaders} $id
                 set :nonce [ns_set iget ${:replyHeaders} "replay-nonce"]
 
@@ -295,7 +294,6 @@ namespace eval ::letsencrypt {
                 #ns_log notice  "REGISTRATION:"
 
                 set payload [subst {{"resource": "new-reg", "contact": \["mailto:webmaster@${:domain}"\]}}]
-
                 set status [:postJwsRequest [:URL new-reg] $payload]
 
                 if {$status eq "400"} {
@@ -450,12 +448,11 @@ namespace eval ::letsencrypt {
                     set csr [pki::pkcs::create_csr $cert_key [list CN ${:domain}] 0]
                     set :certPrivKey [pki::key $cert_key]
                 }
+                ns_write "DONE<br>"
+                ns_write "Getting the certificate for domain ${:domain}, SANs ${:sans}... "
 
                 set csr64 [:base64url $csr]
                 set payload [subst {{"resource": "new-cert", "csr": "$csr64", "authorizations": "${:authorization}"}}]
-                ns_write "DONE<br>"
-
-                ns_write "Getting the certificate for domain ${:domain}, SANs ${:sans}... "
                 set httpStatus [:postJwsRequest [:URL new-cert] $payload]
                 ns_write "returned HTTP status $httpStatus<br>"
 
@@ -516,7 +513,7 @@ namespace eval ::letsencrypt {
             #
             # https://www.identrust.com/certificates/trustid/root-download-x3.html
             #
-            ns_write "Obtaining certificate chain ... "
+            ns_write "Obtaining certificsate chain ... "
             set id [ns_http queue https://letsencrypt.org/certs/lets-encrypt-x3-cross-signed.pem.txt]
             ns_http wait -status S -result R $id
             ns_write "returned HTTP status $S<br>"
