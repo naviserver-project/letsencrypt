@@ -36,6 +36,11 @@ Requirements:
 - OpenSSL binaries installed (the "openssl" command will be executed
   during certificate generation via "exec")
 
+During runtime, the server (nsd) needs write permissions on
+ a) [ns_info home]/modules/nsssl (for the certificate data)
+ b) [ns_server pagedir] (for the challenge files)
+ c) [ns_info config] (for updating the config file if necessary)
+
 
 Installation:
 
