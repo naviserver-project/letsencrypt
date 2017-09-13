@@ -1,7 +1,7 @@
 Let's Encrypt ACME client for NaviServer
 ========================================
 
-Release 0.3
+Release 0.4
 -----------
 
     Florian Hanika <florian.hanika@gmail.com>
@@ -11,9 +11,9 @@ This is a NaviServer module that implements a small Let's Encrypt ACME
 client for NaviServer. When the script is called via the browser, it
 prompts the user to enter one ore more domain names (blank separated)
 and generated for this a Let's Encrypt certificate by creating
-automatically a letsencrypt account, the necessary challenges
-etc. Finally it obtains a certificate and tries to update the actual
-config file if necessary.
+automatically a letsencrypt account (or reuses the account, if it was
+created before), the necessary challenges etc. Finally it obtains a
+certificate and tries to update the actual config file if necessary.
 
 When running this script, sometimes the Let's Encrypt interface
 rejects the generated keys. Probably, the problem occurs, when the
@@ -23,12 +23,15 @@ There is no need to worry about this, since the script will retry with
 another set of keys until the operation succeeds, which happens
 usually after the second or third attempt.
 
+When experimenting with this script, you might consider using the
+"staging" API instead of the production API to avoid to run into rate
+limits. See on the begin of letsencrypt.tcl.
 
 Requirements:
 
 - NaviServer (4.99.12 or newer) with the integrated OpenSSL support
   activated.
-- Next Scripting Framework 2.0 or newer (used for crypto support)
+- Next Scripting Framework 2.0 or newer
 - Tcllib (e.g. 1.15) installed on the Tcl library search path.
 - OpenSSL binaries installed (the "openssl" command will be executed
   during certificate generation via "exec")
