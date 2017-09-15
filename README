@@ -29,7 +29,7 @@ limits. See on the begin of letsencrypt.tcl.
 
 Requirements:
 
-- NaviServer (4.99.12 or newer) with the integrated OpenSSL support
+- NaviServer (4.99.15 or newer) with the integrated OpenSSL support
   activated.
 - Next Scripting Framework 2.0 or newer
 - Tcllib (e.g. 1.15) installed on the Tcl library search path.
