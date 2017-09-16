@@ -666,7 +666,7 @@ namespace eval ::letsencrypt {
             #
             file mkdir $::letsencrypt::sslpath
 
-            set signatureKeyFile $::letsencrypt::sslpath/${:domain}.$::letsencrypt::API-account-signature.key
+            set signatureKeyFile $::letsencrypt::sslpath/letsencrypt-$::letsencrypt::API-account-signature.key
 
             #
             # Start output
