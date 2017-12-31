@@ -497,7 +497,7 @@ namespace eval ::letsencrypt {
             # of nsssl module
 
             ns_log notice  "Combining certificate and private key to ${:certPemFile}"
-            :writeFile ${:certPemFile} "$cert${:certPrivKey}"
+            :writeFile ${:certPemFile} "${:certPrivKey}$cert"
 
             ns_log notice  "Deleting ${:domain}.cer and ${:domain}.crt under $::letsencrypt::sslpath/"
             file delete $::letsencrypt::sslpath/${:domain}.cer
