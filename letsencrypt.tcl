@@ -431,7 +431,8 @@ namespace eval ::letsencrypt {
                     exec -ignorestderr openssl genrsa -out $keyFile 2048
                     set :certPrivKey [:readFile $keyFile]
 
-                    file copy -force /etc/ssl/openssl.cnf $csrConfFile
+		    lassign [exec openssl version -d] _ openssldir
+                    file copy -force [file join $openssldir openssl.cnf] $csrConfFile
                     if {[llength ${:sans}] > 0} {
                         set altNames {}; foreach alt ${:sans} {lappend altNames DNS:$alt}
                         :writeFile -append $csrConfFile "\n\[SAN\]\nsubjectAltName=[join $altNames ,]\n"
