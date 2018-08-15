@@ -34,7 +34,7 @@ namespace eval ::letsencrypt {
 
 ##########################################################################
 #
-#  ---- no configuation below this point ---------------------------------
+#  ---- no configuration below this point --------------------------------
 #
 ##########################################################################
 
@@ -232,7 +232,7 @@ namespace eval ::letsencrypt {
         }
 
         # ###################################äää#### #
-        # ----- get API urls from Let's encrypt ---- #
+        # ----- get API URLs from Let's encrypt ---- #
         # ########################################## #
 
         :method getAPIurls {config} {
@@ -668,7 +668,7 @@ namespace eval ::letsencrypt {
             :startOfReport
 
             #
-            # Always get first the API urls
+            # Always get first the API URLs
             #
             :getAPIurls $config
 
