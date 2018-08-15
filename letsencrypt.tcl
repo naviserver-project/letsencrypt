@@ -149,13 +149,6 @@ namespace eval ::letsencrypt {
             return $backupFileName
         }
 
-        # ################################# #
-        # ----- base64url converting -----  #
-        # ################################# #
-        :method base64url {data} {
-            return [string map {+ - / _ = {} \n {}} [ns_base64encode $data]]
-        }
-
         # ############################## #
         # ----- JSON web signature ----- #
         # ############################## #
@@ -173,15 +166,15 @@ namespace eval ::letsencrypt {
 
             # build protected header
             set protected [subst {{"nonce": "${:nonce}"}}]
-            set protected64 [:base64url $protected]
+            set protected64 [ns_base64urlencode $protected]
 
             # build payload and input for signature
-            set payload64 [:base64url $payload]
+            set payload64 [ns_base64urlencodel $payload]
             set siginput [subst {$protected64.$payload64}]
 
             # build signature
             set signature [pki::sign $siginput ${:rsa_key} sha256]
-            set signature64 [:base64url $signature]
+            set signature64 [ns_base64urlencode $signature]
 
             # build json web signature
             set jws [subst {{
@@ -276,8 +269,8 @@ namespace eval ::letsencrypt {
             #
             for {set count 0} {$count < 10} {incr count} {
                 set :rsa_key [pki::rsa::generate 2048]
-                set :modulus  [:base64url [::pki::_dec_to_ascii [dict get ${:rsa_key} n]]]
-                set :exponent [:base64url [::pki::_dec_to_ascii [dict get ${:rsa_key} e]]]
+                set :modulus  [ns_base64urlencode [::pki::_dec_to_ascii [dict get ${:rsa_key} n]]]
+                set :exponent [ns_base64urlencode [::pki::_dec_to_ascii [dict get ${:rsa_key} e]]]
 
                 # ##################### #
                 # ----- get nonce ----- #
@@ -366,7 +359,7 @@ namespace eval ::letsencrypt {
             #
             set pk [subst {{"e":"${:exponent}","kty":"RSA","n":"${:modulus}"}}]
             set thumbprint [binary format H* [ns_md string -digest sha256 $pk]]
-            set thumbprint64 [:base64url $thumbprint]
+            set thumbprint64 [ns_base64urlencode $thumbprint]
 
             #
             # provide HTTP resource to fulfill HTTP challenge
@@ -431,7 +424,7 @@ namespace eval ::letsencrypt {
                     exec -ignorestderr openssl genrsa -out $keyFile 2048
                     set :certPrivKey [:readFile $keyFile]
 
-		    lassign [exec openssl version -d] _ openssldir
+                    lassign [exec openssl version -d] _ openssldir
                     file copy -force [file join $openssldir openssl.cnf] $csrConfFile
                     if {[llength ${:sans}] > 0} {
                         set altNames {}; foreach alt ${:sans} {lappend altNames DNS:$alt}
@@ -452,7 +445,7 @@ namespace eval ::letsencrypt {
                 ns_write "DONE<br>"
                 ns_write "Getting the certificate for domain ${:domain}, SANs ${:sans}... "
 
-                set csr64 [:base64url $csr]
+                set csr64 [ns_base64urlencode $csr]
                 set payload [subst {{"resource": "new-cert", "csr": "$csr64", "authorizations": "${:authorization}"}}]
                 set httpStatus [:postJwsRequest [:URL new-cert] $payload]
                 ns_write "returned HTTP status $httpStatus<br>"
@@ -524,7 +517,7 @@ namespace eval ::letsencrypt {
             #
             # Add DH parameters
             #
-            ns_write "Adding DH parameters to ${:certPemFile} (might take a while) ... "
+            ns_write "Adding DH parameters to ${:certPemFile} (might take a while - wait for DONE message) ... "
             exec -ignorestderr -- openssl dhparam 2048 >> ${:certPemFile} 2> /dev/null
             ns_write " DONE<br><br>"
 
@@ -691,8 +684,8 @@ namespace eval ::letsencrypt {
 
                 eval [:readFile $signatureKeyFile]
                 set :rsa_key $rsa_key
-                set :modulus  [:base64url [::pki::_dec_to_ascii [dict get ${:rsa_key} n]]]
-                set :exponent [:base64url [::pki::_dec_to_ascii [dict get ${:rsa_key} e]]]
+                set :modulus  [ns_base64urlencode [::pki::_dec_to_ascii [dict get ${:rsa_key} n]]]
+                set :exponent [ns_base64urlencode [::pki::_dec_to_ascii [dict get ${:rsa_key} e]]]
 
             } else {
 
