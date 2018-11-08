@@ -169,7 +169,7 @@ namespace eval ::letsencrypt {
             set protected64 [ns_base64urlencode $protected]
 
             # build payload and input for signature
-            set payload64 [ns_base64urlencodel $payload]
+            set payload64 [ns_base64urlencode $payload]
             set siginput [subst {$protected64.$payload64}]
 
             # build signature
