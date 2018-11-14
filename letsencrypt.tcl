@@ -487,7 +487,7 @@ namespace eval ::letsencrypt {
             :backup ${:certPemFile}
 
             # Save certificate and private key in single file in directory
-            # of nsssl module
+            # of nsssl module.
 
             ns_log notice  "Combining certificate and private key to ${:certPemFile}"
             :writeFile ${:certPemFile} "${:certPrivKey}$cert"
@@ -497,12 +497,13 @@ namespace eval ::letsencrypt {
             file delete $::letsencrypt::sslpath/${:domain}.crt
 
             #
-            # Get certificate chain; the Let's Encrypt certificates are
-            # available from https://letsencrypt.org/certificates/
-            # the used certificate is the "Let’s Encrypt Authority X3 (IdenTrust cross-signed)"
+            # Get certificate chain; the Let's Encrypt certificates
+            # are available from https://letsencrypt.org/certificates/
+            # the used certificate is the "Let’s Encrypt Authority X3
+            # (IdenTrust cross-signed)"
             #
-            # One might as well add the following certificate to complete
-            # the chain, but thos does not seem necessary by
+            # One might as well add the following certificate to
+            # complete the chain, but this does not seem necessary by
             # www.ssllabs.com
             #
             # https://www.identrust.com/certificates/trustid/root-download-x3.html
