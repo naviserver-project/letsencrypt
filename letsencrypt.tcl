@@ -86,6 +86,12 @@ namespace eval ::letsencrypt {
             }]
         }
 
+        :method log {msg} {
+            ::ns_write $msg
+            ns_log notice "letsencrypt: $msg"
+        }
+
+
         # ####################### #
         # ----- printHeaders ---- #
         # ####################### #
@@ -139,7 +145,7 @@ namespace eval ::letsencrypt {
                 set backupFileName $fileName.[ns_md file -digest sha256 $fileName]
                 if {![file exists $backupFileName]} {
                     file $mode -force $fileName $backupFileName
-                    ns_write "Make backup of $fileName<br>"
+                    :log "Make backup of $fileName<br>"
                 }
             } else {
                 #
@@ -216,14 +222,14 @@ namespace eval ::letsencrypt {
 
 
         :method abortMsg {status msg} {
-            ns_write "$msg ended with HTTP status $status<br>"
-            ns_write "[:printHeaders ${:replyHeaders}]<br>${:replyText}<br>"
+            :log "$msg ended with HTTP status $status<br>"
+            :log "[:printHeaders ${:replyHeaders}]<br>${:replyText}<br>"
         }
 
         :method startOfReport {} {
             ns_headers 200 text/html
-            ns_write {<html lang="en"><head><title>NaviServer Let's Encrypt client</title></head><body>}
-            ns_write "<h3>Obtaining a certificate from Let's Encrypt using \
+            :log {<html lang="en"><head><title>NaviServer Let's Encrypt client</title></head><body>}
+            :log "<h3>Obtaining a certificate from Let's Encrypt using \
                   the [string totitle $::letsencrypt::API] API:</h3>"
         }
 
@@ -244,12 +250,12 @@ namespace eval ::letsencrypt {
             set id [ns_http queue $url]
             ns_http wait -status S -result R -headers ${:replyHeaders} $id
 
-            #ns_write [:printHeaders ${:replyHeaders}]
+            #:log [:printHeaders ${:replyHeaders}]
             set :nonce [ns_set iget ${:replyHeaders} "replay-nonce"]
 
             set :apiURLs [json::json2dict $R]
 
-            ns_write [subst {<br>
+            :log [subst {<br>
                 Let's Encrypt URLs:<br>
                 <pre>   [:URL key-change]\n   [:URL new-authz]\n   [:URL new-cert]\n   [:URL new-reg]\n   [:URL revoke-cert]</pre>
             }]
@@ -261,8 +267,8 @@ namespace eval ::letsencrypt {
 
         :method registerNewAccount {config} {
 
-            ns_write "Register new account at Let's Encrypt... "
-            ns_write "generating RSA key pair...<br>"
+            :log "Register new account at Let's Encrypt... "
+            :log "generating RSA key pair...<br>"
 
             #
             # Repeat max 10 times until registration was successful
@@ -283,19 +289,19 @@ namespace eval ::letsencrypt {
                 # ######################## #
                 # ----- registration ----- #
                 # ######################## #
-                ns_write "Creating new registration...<br>"
+                :log "Creating new registration...<br>"
                 #ns_log notice  "REGISTRATION:"
 
                 set payload [subst {{"resource": "new-reg", "contact": \["mailto:webmaster@${:domain}"\]}}]
                 set status [:postJwsRequest [:URL new-reg] $payload]
 
                 if {$status eq "400"} {
-                    ns_write "Registration failed. Retry and generate new RSA key pair...<br>"
+                    :log "Registration failed. Retry and generate new RSA key pair...<br>"
                 } else {
                     break
                 }
             }
-            ns_write "Registration ended with status $status.<br>"
+            :log "Registration ended with status $status.<br>"
 
             return $status
         }
@@ -306,7 +312,7 @@ namespace eval ::letsencrypt {
 
         :method signAgreement {} {
 
-            ns_write "<br>Signing agreement... "
+            :log "<br>Signing agreement... "
             set location [ns_set iget ${:replyHeaders} "location"]
 
             #
@@ -324,7 +330,7 @@ namespace eval ::letsencrypt {
             set payload [subst {{"resource": "reg", "agreement": "$url"}}]
             set httpStatus [:postJwsRequest $location $payload]
 
-            ns_write "returned HTTP status $httpStatus<br>"
+            :log "returned HTTP status $httpStatus<br>"
             return $httpStatus
         }
 
@@ -334,13 +340,13 @@ namespace eval ::letsencrypt {
         # ########################## #
 
         :method authorizeDomain {domain} {
-            ns_write "<br>Authorizing account for domain <strong>$domain</strong>... "
+            :log "<br>Authorizing account for domain <strong>$domain</strong>... "
 
             set payload [subst {{"resource": "new-authz", "identifier": {"type": "dns", "value": "$domain"}}}]
             set httpStatus [:postJwsRequest [:URL new-authz] $payload]
-            ns_write "returned HTTP status $httpStatus<br>"
+            :log "returned HTTP status $httpStatus<br>"
 
-            ns_write "... getting HTTP challenge... "
+            :log "... getting HTTP challenge... "
             set :authorization [ns_set iget ${:replyHeaders} "location"]
             set challenges [dict get [json::json2dict ${:replyText}] challenges]
 
@@ -369,22 +375,22 @@ namespace eval ::letsencrypt {
 
             set payload [subst {{"resource": "challenge", "keyAuthorization": "$token.$thumbprint64"}}]
             set httpStatus [:postJwsRequest $url $payload]
-            ns_write "returned HTTP status $httpStatus<br>"
+            :log "returned HTTP status $httpStatus<br>"
 
             #
             # ----- validate
             #
-            ns_write "... validating the challenge... "
+            :log "... validating the challenge... "
 
             regexp {^<(.*)>;rel="up"} [ns_set iget ${:replyHeaders} "link"] . url
             set status [dict get [json::json2dict ${:replyText}] status]
 
-            ns_write "status: $status<br>"
-            #ns_write "<pre>$result</pre>[:printHeaders ${:replyHeaders}]<br>"
+            :log "status: $status<br>"
+            #:log "<pre>$result</pre>[:printHeaders ${:replyHeaders}]<br>"
 
             # check until validation is finished
             while {$status eq "pending"} {
-                ns_write "... retry after one second... "
+                :log "... retry after one second... "
                 ns_sleep 1
 
                 set id [ns_http queue $url]
@@ -392,9 +398,9 @@ namespace eval ::letsencrypt {
                 set :nonce [ns_set iget ${:replyHeaders} "replay-nonce"]
 
                 set status [dict get [json::json2dict $R] status]
-                ns_write "status: $status<br>"
+                :log "status: $status<br>"
                 if {$status ni {"valid" "pending"}} {
-                    ns_write "<pre>$R</pre>[:printHeaders ${:replyHeaders}]<br>"
+                    :log "<pre>$R</pre>[:printHeaders ${:replyHeaders}]<br>"
                     break
                 }
             }
@@ -408,7 +414,7 @@ namespace eval ::letsencrypt {
 
         :method certificateRequest {} {
 
-            ns_write "<br>Generating RSA key pair for SSL certificate... "
+            :log "<br>Generating RSA key pair for SSL certificate... "
 
             #
             # Repeat max 10 times until certificate was successfully obtained
@@ -442,18 +448,18 @@ namespace eval ::letsencrypt {
                     set csr [pki::pkcs::create_csr $cert_key [list CN ${:domain}] 0]
                     set :certPrivKey [pki::key $cert_key]
                 }
-                ns_write "DONE<br>"
-                ns_write "Getting the certificate for domain ${:domain}, SANs ${:sans}... "
+                :log "DONE<br>"
+                :log "Getting the certificate for domain ${:domain}, SANs ${:sans}... "
 
                 set csr64 [ns_base64urlencode $csr]
                 set payload [subst {{"resource": "new-cert", "csr": "$csr64", "authorizations": "${:authorization}"}}]
                 set httpStatus [:postJwsRequest [:URL new-cert] $payload]
-                ns_write "returned HTTP status $httpStatus<br>"
+                :log "returned HTTP status $httpStatus<br>"
 
                 if {$httpStatus eq "400"} {
-                    ns_write "Certificate request failed. Generating new RSA key pair... "
+                    :log "Certificate request failed. Generating new RSA key pair... "
                     #ns_log notice "CSR-Request returned 400\n"
-                    ns_write "[:printHeaders ${:replyHeaders}]<br>${:replyText}<br>"
+                    :log "[:printHeaders ${:replyHeaders}]<br>${:replyText}<br>"
 
                 } else {
                     break
@@ -469,7 +475,7 @@ namespace eval ::letsencrypt {
 
         :method certificateInstall {} {
 
-            ns_write "<br>Generate the certificate under $::letsencrypt::sslpath...<br>"
+            :log "<br>Generate the certificate under $::letsencrypt::sslpath...<br>"
 
             ns_log notice  "Storing certificate under $::letsencrypt::sslpath/${:domain}.cer"
             :writeFile -binary $::letsencrypt::sslpath/${:domain}.cer ${:replyText}
@@ -508,21 +514,21 @@ namespace eval ::letsencrypt {
             #
             # https://www.identrust.com/certificates/trustid/root-download-x3.html
             #
-            ns_write "Obtaining certificsate chain ... "
+            :log "Obtaining certificsate chain ... "
             set id [ns_http queue https://letsencrypt.org/certs/lets-encrypt-x3-cross-signed.pem.txt]
             ns_http wait -status S -result R $id
-            ns_write "returned HTTP status $S<br>"
+            :log "returned HTTP status $S<br>"
 
             :writeFile -append ${:certPemFile} $R
 
             #
             # Add DH parameters
             #
-            ns_write "Adding DH parameters to ${:certPemFile} (might take a while - wait for DONE message) ... "
+            :log "Adding DH parameters to ${:certPemFile} (might take a while - wait for DONE message) ... "
             exec -ignorestderr -- openssl dhparam 2048 >> ${:certPemFile} 2> /dev/null
-            ns_write " DONE<br><br>"
+            :log " DONE<br><br>"
 
-            ns_write "New certificate successfully installed in: <strong>${:certPemFile}</strong><br><br>"
+            :log "New certificate successfully installed in: <strong>${:certPemFile}</strong><br><br>"
         }
 
 
@@ -538,7 +544,7 @@ namespace eval ::letsencrypt {
             # (if changed).
             #
 
-            ns_write "Checking the NaviServer config file: "
+            :log "Checking the NaviServer config file: "
             set C [:readFile [ns_info config]]
             set origConfig $C
 
@@ -553,16 +559,16 @@ namespace eval ::letsencrypt {
                 }
             }
             if {$nssslLoaded} {
-                ns_write "The nsssl driver module is apparently already loaded.<br>"
+                :log "The nsssl driver module is apparently already loaded.<br>"
             } else {
-                ns_write "The nsssl driver module is apparently already not loaded, try to fix this.<br>"
+                :log "The nsssl driver module is apparently already not loaded, try to fix this.<br>"
 
-                if {[regexp {\#\s+ns_param\s+nsssl.*nsssl[.]so} $C]} {
+                if {[regexp {\#\s+ns_param\s+nsssl.*nsssl} $C]} {
                     #
                     # The nsssl driver is apparently commented out, activate it
                     #
-                    regsub {\#(\s+ns_param\s+nsssl.*nsssl[.]so)} $C \1 C
-                    ns_write {...removing comment from driver module nsssl.so line in config file.<br>}
+                    regsub {\#(\s+ns_param\s+nsssl.*nsssl)} $C \1 C
+                    :log {...removing comment from driver module nsssl.so line in config file.<br>}
 
                 } else {
                     #
@@ -570,15 +576,24 @@ namespace eval ::letsencrypt {
                     # to the end.
                     #
                     append C {
+                        #
+                        # In order to install nsssl gobally to your
+                        # server, uncomment the following lines
+                        #
+                        ns_section "ns/modules"
+                        ns_param    nssock              nssock
+
                         ns_section    ns/server/${server}/modules
                         ns_param      nsssl            nsssl.so
                     }
-                    ns_write {... adding driver module nsssl.so to your config file.<br>}
+                    :log {
+                        ... add the driver module "nsssl.so" in your config file either
+                        to the global or per-server "modules" section .<br>}
                 }
             }
 
             if {![regexp {ns_param\s+certificate\s+} $C]} {
-                ns_write [subst {Your config file [ns_info config] does
+                :log [subst {Your config file [ns_info config] does
                     not seem to contain a nsssl definition section.<br>
                     Adding a default section to the end. Please check,
                     if you want to modify the section according to your needs.
@@ -599,7 +614,7 @@ namespace eval ::letsencrypt {
                     }
                 }]
             } elseif {![regexp "ns_param\\s+certificate\\s+${:certPemFile}" $C]} {
-                ns_write {... updating the certificate entry<br>}
+                :log {... updating the certificate entry<br>}
                 regsub -all {ns_param\s+certificate\s+[^\n]+} $C "ns_param   certificate   ${:certPemFile}" C
             }
 
@@ -616,7 +631,7 @@ namespace eval ::letsencrypt {
                 # Rewrite config file
                 #
                 :writeFile [ns_info config] $C
-                ns_write [subst {
+                :log [subst {
                     Updating NaviServer config file<br>
                     Please check updated config file: <strong>[ns_info config]</strong>
                     <br>and update it (if necessary)<p>
@@ -625,7 +640,7 @@ namespace eval ::letsencrypt {
                 #
                 # Nothing has changed.
                 #
-                ns_write {No need to update the NaviServer config file.<br>}
+                :log {No need to update the NaviServer config file.<br>}
             }
         }
 
@@ -681,7 +696,7 @@ namespace eval ::letsencrypt {
                 # We have already registered in the past successfully at
                 # Let's Encrypt and signed the agreement.
                 #
-                ns_write "Reuse existing account registration at Let's Encrypt<br>"
+                :log "Reuse existing account registration at Let's Encrypt<br>"
 
                 eval [:readFile $signatureKeyFile]
                 set :rsa_key $rsa_key
@@ -713,7 +728,7 @@ namespace eval ::letsencrypt {
             foreach domain ${:domains} {
                 set status [:authorizeDomain $domain]
                 if {$status eq "invalid"} {
-                    ns_write [subst {
+                    :log [subst {
                         Validation of domain $domain failed.
                         <p>Please restart the procedure at <a href="${:startUrl}">${:startUrl}</a>
                     }]
@@ -739,7 +754,7 @@ namespace eval ::letsencrypt {
             :certificateInstall
             :updateConfiguration
 
-            ns_write [subst {<br>
+            :log [subst {<br>
                 To use the new certificate, restart your NaviServer instance
                 and check results on <a href="https://${:domain}">https://${:domain}</a>.
                 <p>
