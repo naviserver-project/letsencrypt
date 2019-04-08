@@ -15,6 +15,11 @@ automatically a letsencrypt account (or reuses the account, if it was
 created before), the necessary challenges etc. Finally it obtains a
 certificate and tries to update the actual config file if necessary.
 
+The package supports Multi-Domain (SAN) Certificates, using the first
+provied domain name as primary name and places the other names into
+the Subject Alternative Field Name (SAN) field, such that the
+same certificate can be used for all provided names.
+
 When running this script, sometimes the Let's Encrypt interface
 rejects the generated keys. Probably, the problem occurs, when the
 last bit is "0", which is interpreted as a key with 2047 bits:
@@ -26,6 +31,7 @@ usually after the second or third attempt.
 When experimenting with this script, you might consider using the
 "staging" API instead of the production API to avoid to run into rate
 limits. See on the begin of letsencrypt.tcl.
+
 
 Requirements:
 
@@ -41,6 +47,12 @@ During runtime, the server (nsd) needs write permissions on
  b) [ns_server pagedir] (for the challenge files)
  c) [ns_info config] (for updating the config file if necessary)
 
+When obtaining multi-domain (SAN) certificates, make sure that
+a) the DNS entries for the name are known to letsencrypt.org,
+b) the server behind this DNS entries are running and
+c) are sharing the same ".well-known" directory on the toplevel
+   used for saving ACME-challenges (a link to the toplevel
+   ".well-known" directory on the primary server is sufficient)
 
 Installation:
 
