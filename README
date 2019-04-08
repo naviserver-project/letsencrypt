@@ -48,9 +48,8 @@ During runtime, the server (nsd) needs write permissions on
  c) [ns_info config] (for updating the config file if necessary)
 
 In order to obain multi-domain SAN certificates, simply add the domain
-names space separated to the dialog that shows up ager after calling
-letsencrypt.tcl When obtaining multi-domain (SAN) certificates, make
-sure that
+names space separated to the dialog that shows up after calling
+letsencrypt.tcl. Make sure that
 a) the DNS entries for all names are known to letsencrypt.org,
 b) the servers behind these DNS entries are running, and
 c) share the same ".well-known" directory on the toplevel
