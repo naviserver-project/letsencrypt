@@ -47,10 +47,13 @@ During runtime, the server (nsd) needs write permissions on
  b) [ns_server pagedir] (for the challenge files)
  c) [ns_info config] (for updating the config file if necessary)
 
-When obtaining multi-domain (SAN) certificates, make sure that
-a) the DNS entries for the name are known to letsencrypt.org,
-b) the server behind this DNS entries are running and
-c) are sharing the same ".well-known" directory on the toplevel
+In order to obain multi-domain SAN certificates, simply add the domain
+names space separated to the dialog that shows up ager after calling
+letsencrypt.tcl When obtaining multi-domain (SAN) certificates, make
+sure that
+a) the DNS entries for all names are known to letsencrypt.org,
+b) the servers behind these DNS entries are running, and
+c) share the same ".well-known" directory on the toplevel
    used for saving ACME-challenges (a link to the toplevel
    ".well-known" directory on the primary server is sufficient)
 
