@@ -37,8 +37,9 @@ namespace eval ::letsencrypt {
 #  ---- no configuration below this point --------------------------------
 #
 ##########################################################################
-
-package require json
+if {[info commands ::json::json2dict] eq ""} {
+    package require json
+}
 package require pki
 package require nx
 
@@ -110,7 +111,7 @@ namespace eval ::letsencrypt {
 
         :method readFile {{-binary:switch f} fileName} {
             set F [open $fileName r]
-            if {$binary} { fconfigure $F -translation binary }
+            if {$binary} { fconfigure $F -encoding binary -translation binary }
             set content [read $F]
             close $F
             return $content
@@ -123,7 +124,7 @@ namespace eval ::letsencrypt {
         :method writeFile {{-binary:switch f} {-append:switch f} fileName content} {
             set mode [expr {$append ? "a" : "w"}]
             set F [open $fileName $mode]
-            if {$binary} { fconfigure $F -translation binary }
+            if {$binary} { fconfigure $F -encoding binary -translation binary }
             puts -nonewline $F $content
             close $F
         }
@@ -180,7 +181,7 @@ namespace eval ::letsencrypt {
 
             # build signature
             set signature [pki::sign $siginput ${:rsa_key} sha256]
-            set signature64 [ns_base64urlencode $signature]
+            set signature64 [ns_base64urlencode [binary format A* $signature]]
 
             # build json web signature
             set jws [subst {{
@@ -205,7 +206,7 @@ namespace eval ::letsencrypt {
             set queryHeaders [ns_set create]
             set :replyHeaders [ns_set create]
             ns_set update $queryHeaders "Content-type" "application/jose+json"
-
+            ns_log notice "postJwsRequest $url payload:\n$payload\n====JWS:\n[:JWS $payload]"
             # submit post request
             set id [ns_http queue -method POST \
                         -headers $queryHeaders \
@@ -275,8 +276,8 @@ namespace eval ::letsencrypt {
             #
             for {set count 0} {$count < 10} {incr count} {
                 set :rsa_key [pki::rsa::generate 2048]
-                set :modulus  [ns_base64urlencode [::pki::_dec_to_ascii [dict get ${:rsa_key} n]]]
-                set :exponent [ns_base64urlencode [::pki::_dec_to_ascii [dict get ${:rsa_key} e]]]
+                set :modulus  [ns_base64urlencode [binary format A* [::pki::_dec_to_ascii [dict get ${:rsa_key} n]]]]
+                set :exponent [ns_base64urlencode [binary format A* [::pki::_dec_to_ascii [dict get ${:rsa_key} e]]]]
 
                 # ##################### #
                 # ----- get nonce ----- #
@@ -346,9 +347,15 @@ namespace eval ::letsencrypt {
             set httpStatus [:postJwsRequest [:URL new-authz] $payload]
             :log "returned HTTP status $httpStatus<br>"
 
+            if {$httpStatus eq "400"} {
+                :log "error message: ${:replyText}<br>"
+                return invalid
+            }
+
             :log "... getting HTTP challenge... "
             set :authorization [ns_set iget ${:replyHeaders} "location"]
             set challenges [dict get [json::json2dict ${:replyText}] challenges]
+            ns_log notice "... challenges:\n[join $challenges \n]"
 
             #
             # parse HTTP challenge
@@ -700,8 +707,8 @@ namespace eval ::letsencrypt {
 
                 eval [:readFile $signatureKeyFile]
                 set :rsa_key $rsa_key
-                set :modulus  [ns_base64urlencode [::pki::_dec_to_ascii [dict get ${:rsa_key} n]]]
-                set :exponent [ns_base64urlencode [::pki::_dec_to_ascii [dict get ${:rsa_key} e]]]
+                set :modulus [ns_base64urlencode [binary format A* [::pki::_dec_to_ascii [dict get ${:rsa_key} n]]]]
+                set :exponent [ns_base64urlencode [binary format A* [::pki::_dec_to_ascii [dict get ${:rsa_key} e]]]]
 
             } else {
 
