@@ -1,24 +1,27 @@
 Let's Encrypt ACME client for NaviServer
 ========================================
 
-Release 0.4
+Release 0.5
 -----------
 
     Florian Hanika <florian.hanika@gmail.com>
     neumann@wu-wien.ac.at
 
 This is a NaviServer module that implements a small Let's Encrypt ACME
-client for NaviServer. When the script is called via the browser, it
-prompts the user to enter one ore more domain names (blank separated)
-and generated for this a Let's Encrypt certificate by creating
-automatically a letsencrypt account (or reuses the account, if it was
-created before), the necessary challenges etc. Finally it obtains a
-certificate and tries to update the actual config file if necessary.
+client for NaviServer based on the ACME v2 interface.
+
+When the script is called via the browser, it prompts the user to
+enter one ore more domain names (blank separated) and generated for
+this a Let's Encrypt certificate by creating automatically a
+letsencrypt account (or reuses the account, if it was created before),
+the necessary challenges etc. Finally it obtains a certificate and
+tries to update the actual config file if necessary.
 
 The package supports Multi-Domain (SAN) Certificates, using the first
-provied domain name as primary name and places the other names into
+provided domain name as primary name and places the other names into
 the Subject Alternative Field Name (SAN) field, such that the
 same certificate can be used for all provided names.
+
 
 When running this script, sometimes the Let's Encrypt interface
 rejects the generated keys. Probably, the problem occurs, when the
@@ -38,9 +41,10 @@ Requirements:
 - NaviServer (4.99.15 or newer) with the integrated OpenSSL support
   activated.
 - Next Scripting Framework 2.0 or newer
-- Tcllib (e.g. 1.15) installed on the Tcl library search path.
+- Tcllib (e.g. 1.15) installed on the Tcl library search path
+  (used for the "json" package).
 - OpenSSL binaries installed (the "openssl" command will be executed
-  during certificate generation via "exec")
+  during a run of the script)
 
 During runtime, the server (nsd) needs write permissions on
  a) [ns_info home]/modules/nsssl (for the certificate data)

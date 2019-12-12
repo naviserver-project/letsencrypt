@@ -1,13 +1,15 @@
 #
 # letsencrypt.tcl --
 #
-#   A small Let's Encrypt client for NaviServer implemented in Tcl.
+#   A small Let's Encrypt client for NaviServer implemented in Tcl,
+#   supporting the ACME v2 interface of letsenvrypt.
+#
 #   To use it, set enabled to 1 and drop it somewhere under
 #   NaviServer pageroot which is usually /usr/local/ns/pages and point
 #   browser to it.
 #
-#
-# If this page needs to be restricted, configure the following three variables:
+# If this page needs to be access restricted, configure the following
+# three variables:
 #
 set user ""
 set password ""
@@ -25,8 +27,8 @@ namespace eval ::letsencrypt {
     # situations: https://letsencrypt.org/docs/rate-limits/
     #
     # When developing the interface (e.g. improving this script), you
-    # might consider using the staging API of letsencrypt instead of
-    # the production API to void these constraints.
+    # should consider using the "staging" API of letsencrypt instead
+    # of the "production" API to void these constraints.
     #
     set API "production"
     #set API "staging"
@@ -40,7 +42,6 @@ namespace eval ::letsencrypt {
 if {[info commands ::json::json2dict] eq ""} {
     package require json
 }
-package require pki
 package require nx
 
 namespace eval ::letsencrypt {
@@ -54,9 +55,10 @@ namespace eval ::letsencrypt {
         :variable startUrl
 
         # crypto state
-        :variable rsa_key
         :variable modulus
         :variable exponent
+        :variable jwk
+        :variable thumbprint64
 
         # results from last HTTP request
         :variable nonce
@@ -156,71 +158,55 @@ namespace eval ::letsencrypt {
             return $backupFileName
         }
 
-        # ############################## #
-        # ----- JSON web signature ----- #
-        # ############################## #
-        :method JWS {payload} {
-            #
-            # Generate JSON Web Signature (JWS) according to RFC 7515
-            # based on instance variables nonce, modulus, and
-            # exponent.
-            #
-            set jwk [subst {{
-                "kty": "RSA",
-                "n": "${:modulus}",
-                "e": "${:exponent}"
-            }}]
-
-            # build protected header
-            set protected [subst {{"nonce": "${:nonce}"}}]
-            set protected64 [ns_base64urlencode $protected]
-
-            # build payload and input for signature
-            set payload64 [ns_base64urlencode $payload]
-            set siginput [subst {$protected64.$payload64}]
-
-            # build signature
-            set signature [pki::sign $siginput ${:rsa_key} sha256]
-            set signature64 [ns_base64urlencode [binary format A* $signature]]
-
-            # build json web signature
-            set jws [subst {{
-                "header": {
-                    "alg": "RS256",
-                    "jwk": $jwk
-                },
-                "protected": "$protected64",
-                "payload":   "$payload64",
-                "signature": "$signature64"
-            }}]
-
-            #ns_log notice "JWS payload:\n$payload\njws:\n$jws"
-            return $jws
-        }
 
         # ###############ääää########################## #
         # ----- post JWS request of given payload ----- #
         # ############################################# #
 
-        :method postJwsRequest {url payload} {
-            set queryHeaders [ns_set create]
-            set :replyHeaders [ns_set create]
-            ns_set update $queryHeaders "Content-type" "application/jose+json"
-            ns_log notice "postJwsRequest $url payload:\n$payload\n====JWS:\n[:JWS $payload]"
-            # submit post request
-            set id [ns_http queue -method POST \
-                        -headers $queryHeaders \
-                        -body [:JWS $payload] \
-                        $url]
-            ns_http wait -status S -result :replyText -headers ${:replyHeaders} $id
+        :method send_signed_request {{-method POST} url payload} {
+            set payload64 [ns_base64urlencode -binary $payload]
+            #
+            # "kid" and "jwk" are mutually exclusive
+            # (https://tools.ietf.org/html/draft-ietf-acme-acme-10#section-6.2)
+            #
+            if {[info exists :kid]} {
+                set protected [subst {{"url":"$url","alg":"RS256","nonce":"${:nonce}","kid":"${:kid}"}}]
+            } else {
+                #
+                # "jwk" only for newAccount and revokeCert requests
+                set protected [subst {{"url":"$url","alg":"RS256","nonce":"${:nonce}","jwk":${:jwk}}}]
+            }
+            set protected64 [ns_base64urlencode $protected]
 
-            # keep the nonce for the next request
+            set siginput [subst {$protected64.$payload64}]
+            set signature64 [::ns_crypto::md string \
+                                 -digest sha256 \
+                                 -sign ${:accoutKeyFile} \
+                                 -encoding base64url \
+                                 $siginput]
+            set data [subst {{
+                "protected": "$protected64",
+                "payload":   "$payload64",
+                "signature": "$signature64"
+            }}]
+            #:log "<pre>POST $url\n$data</pre>"
+
+            set queryHeaders [ns_set create]
+            ns_set update $queryHeaders "Content-type" "application/jose+json"
+            set d [ns_http run -method POST -headers $queryHeaders -body $data $url]
+
+            #
+            # Get headers, body and nonce into instance variables,
+            # since these are used later to understand what the server
+            # replied.
+            #
+            set :replyHeaders [dict get $d headers]
+            set :replyText [dict get $d body]
             set :nonce [ns_set iget ${:replyHeaders} "replay-nonce"]
 
-            # return status
-            return $S
+            :log "<pre>reply from letsencrypt:\n${:replyText}</pre>"
+            return [dict get $d status]
         }
-
 
         :method abortMsg {status msg} {
             :log "$msg ended with HTTP status $status<br>"
@@ -229,7 +215,7 @@ namespace eval ::letsencrypt {
 
         :method startOfReport {} {
             ns_headers 200 text/html
-            :log {<html lang="en"><head><title>NaviServer Let's Encrypt client</title></head><body>}
+            :log {<!DOCTYPE html><html lang="en"><head><title>NaviServer Let's Encrypt client</title></head><body>}
             :log "<h3>Obtaining a certificate from Let's Encrypt using \
                   the [string totitle $::letsencrypt::API] API:</h3>"
         }
@@ -244,29 +230,84 @@ namespace eval ::letsencrypt {
 
         :method getAPIurls {config} {
 
-
             set url [dict get $config $::letsencrypt::API url]
-
-            set :replyHeaders [ns_set create]
-            set id [ns_http queue $url]
-            ns_http wait -status S -result R -headers ${:replyHeaders} $id
+            set d [ns_http run $url]
+            set :replyHeaders [dict get $d headers]
 
             #:log [:printHeaders ${:replyHeaders}]
             set :nonce [ns_set iget ${:replyHeaders} "replay-nonce"]
 
-            set :apiURLs [json::json2dict $R]
+            set :apiURLs [json::json2dict [dict get $d body]]
+            #:log ":apiURLs ${:apiURLs}"
+
+            #
+            # key-change keyChange
+            # new-authz
+            # new-cert    newOrder?
+            # new-reg     newAccount?
+            # revoke-cert revokeCert
+            #             newNonce
 
             :log [subst {<br>
-                Let's Encrypt URLs:<br>
-                <pre>   [:URL key-change]\n   [:URL new-authz]\n   [:URL new-cert]\n   [:URL new-reg]\n   [:URL revoke-cert]</pre>
+                Let's Encrypt URLs ($::letsencrypt::API API):<br>
+                <pre>   [:URL keyChange]\n   [:URL newNonce]\n   [:URL newOrder]\n   [:URL newAccount]\n   [:URL revokeCert]</pre>
             }]
+        }
+
+        :method getNonce {} {
+            set d [ns_http run -method HEAD [:URL newNonce]]
+            set :replyHeaders [dict get $d headers]
+            set :nonce [ns_set iget ${:replyHeaders} "replay-nonce"]
+            #:log "<pre>getNonce: ${:nonce}\n</pre>"
+        }
+
+        :method decnum_to_bytes {num} {
+            set result ""
+
+            while {$num} {
+                set char [expr {$num & 0xff}]
+                set result "[format %c $char]$result"
+                set num [expr {$num >> 8}]
+            }
+            return $result
+        }
+
+
+        :method parseAccountKey {} {
+            :log "parseAccountKey ${:accoutKeyFile}<br>"
+
+            #
+            # Get :modulus and :exponent from the PEM file of the account
+            #
+            set keyInfo [exec openssl rsa -in ${:accoutKeyFile} -noout -text]
+            regexp {\nmodulus:\n([\sa-f0-9:]+)\npublicExponent:\s(\d+)\s} $keyInfo . pub_hex exp
+            regsub -all {[\s:]} $pub_hex "" mod
+            regsub {^00} $mod "" mod
+            #:log "<pre>pub_hex: ${pub_hex}</pre>"
+            #:log "modulus: ${mod}<br>"
+
+            #
+            # Put key info into JSON Web Key (:jwk)
+            #
+            set :modulus [ns_base64urlencode -binary [binary decode hex $mod]]
+            set :exponent [ns_base64urlencode -binary [:decnum_to_bytes $exp]]
+            set :jwk [subst {{"e":"${:exponent}","kty":"RSA","n":"${:modulus}"}}]
+
+            #
+            # Generate thumbprint from the JSON Web Key (:jwk)
+            #
+            set :thumbprint64 [ns_md string -digest sha256 -encoding base64url ${:jwk}]
+            :log "<br><pre>jwk: ${:jwk}\n"
+            :log "thumbprint64: ${:thumbprint64}\n"
+
+            #:log "<pre>jwk ${:jwk}\nthumbprint64: ${:thumbprint64}</pre>"
         }
 
         # ########################################## #
         # - register new acccount at Let's Encrypt - #
         # ########################################## #
 
-        :method registerNewAccount {config} {
+        :method registerNewAccount {} {
 
             :log "Register new account at Let's Encrypt... "
             :log "generating RSA key pair...<br>"
@@ -274,31 +315,30 @@ namespace eval ::letsencrypt {
             #
             # Repeat max 10 times until registration was successful
             #
-            for {set count 0} {$count < 10} {incr count} {
-                set :rsa_key [pki::rsa::generate 2048]
-                set :modulus  [ns_base64urlencode [binary format A* [::pki::_dec_to_ascii [dict get ${:rsa_key} n]]]]
-                set :exponent [ns_base64urlencode [binary format A* [::pki::_dec_to_ascii [dict get ${:rsa_key} e]]]]
+            for {set count 0} {$count < 3} {incr count} {
+                #
+                # Create a fresh account key and get its components
+                #
+                exec -ignorestderr -- openssl genrsa 2048 > ${:accoutKeyFile}
+                :parseAccountKey
 
-                # ##################### #
-                # ----- get nonce ----- #
-                # ##################### #
-                set :replyHeaders [ns_set create]
-                set id [ns_http queue -method HEAD [:URL new-reg]]
-                ns_http wait -status S -result R -headers ${:replyHeaders} $id
-                set :nonce [ns_set iget ${:replyHeaders} "replay-nonce"]
+                # ########################### #
+                # ----- get first nonce ----- #
+                # ########################### #
+                :getNonce
 
-                # ######################## #
-                # ----- registration ----- #
-                # ######################## #
+                # ########################### #
+                # ------ registration ------- #
+                # ########################### #
                 :log "Creating new registration...<br>"
-                #ns_log notice  "REGISTRATION:"
 
-                set payload [subst {{"resource": "new-reg", "contact": \["mailto:webmaster@${:domain}"\]}}]
-                set status [:postJwsRequest [:URL new-reg] $payload]
-
+                set payload [subst {{"termsOfServiceAgreed": true, "onlyReturnExisting": false, "contact": \["mailto:webmaster@${:domain}"\]}}]
+                set status [:send_signed_request [:URL newAccount] $payload]
                 if {$status eq "400"} {
-                    :log "Registration failed. Retry and generate new RSA key pair...<br>"
+                    :log "New Registration failed. Retry and generate new RSA key pair...<br>"
                 } else {
+                    set :kid [ns_set iget ${:replyHeaders} "location"]
+                    :log "<pre>registration headers contained kid ${:kid}\n</pre>"
                     break
                 }
             }
@@ -315,6 +355,7 @@ namespace eval ::letsencrypt {
 
             :log "<br>Signing agreement... "
             set location [ns_set iget ${:replyHeaders} "location"]
+            #set :kid $location
 
             #
             # parse link header for terms of service
@@ -329,7 +370,7 @@ namespace eval ::letsencrypt {
             }
 
             set payload [subst {{"resource": "reg", "agreement": "$url"}}]
-            set httpStatus [:postJwsRequest $location $payload]
+            set httpStatus [:send_signed_request $location $payload]
 
             :log "returned HTTP status $httpStatus<br>"
             return $httpStatus
@@ -340,14 +381,13 @@ namespace eval ::letsencrypt {
         # ----- authorize domain --- #
         # ########################## #
 
-        :method authorizeDomain {domain} {
+        :method authorizeDomain {auth_url domain} {
             :log "<br>Authorizing account for domain <strong>$domain</strong>... "
 
-            set payload [subst {{"resource": "new-authz", "identifier": {"type": "dns", "value": "$domain"}}}]
-            set httpStatus [:postJwsRequest [:URL new-authz] $payload]
-            :log "returned HTTP status $httpStatus<br>"
+            set httpStatus [:send_signed_request $auth_url ""]
+            :log "$auth_url returned HTTP status $httpStatus<br>"
 
-            if {$httpStatus eq "400"} {
+            if {$httpStatus in {400 403}} {
                 :log "error message: ${:replyText}<br>"
                 return invalid
             }
@@ -358,58 +398,88 @@ namespace eval ::letsencrypt {
             ns_log notice "... challenges:\n[join $challenges \n]"
 
             #
-            # parse HTTP challenge
+            # Parse HTTP challenge
             #
             foreach entry $challenges {
                 if {[dict filter $entry value "http-01"] ne ""} {
-                    set url [dict get $entry uri]
+                    set challengeURL [dict get $entry url]
                     set token [dict get $entry token]
                 }
             }
 
             #
-            # generate thumbprint
-            #
-            set pk [subst {{"e":"${:exponent}","kty":"RSA","n":"${:modulus}"}}]
-            set thumbprint [binary format H* [ns_md string -digest sha256 $pk]]
-            set thumbprint64 [ns_base64urlencode $thumbprint]
-
-            #
-            # provide HTTP resource to fulfill HTTP challenge
+            # Provide HTTP resource to fulfill HTTP challenge
             #
             file mkdir [ns_server pagedir]/.well-known/acme-challenge
-            :writeFile [ns_server pagedir]/.well-known/acme-challenge/$token $token.$thumbprint64
+            :writeFile [ns_server pagedir]/.well-known/acme-challenge/$token $token.${:thumbprint64}
 
-            set payload [subst {{"resource": "challenge", "keyAuthorization": "$token.$thumbprint64"}}]
-            set httpStatus [:postJwsRequest $url $payload]
-            :log "returned HTTP status $httpStatus<br>"
+            :log "<pre>keyauthorization: $token.${:thumbprint64}</pre>\n"
+
+            #set payload [subst {{"resource": "challenge", "keyAuthorization": "$token.${:thumbprint64}"}}]
+            :log "challenge is done [ns_server pagedir]/.well-known/acme-challenge/$token<br>"
+
+            #
+            # Try to obtain challenge URL locally. If this does not
+            # work for us, it will not work for letsencrypt either.
+            #
+            set wellknown_url "http://$domain/.well-known/acme-challenge/$token"
+            set d [ns_http run -timeout 5.0 $wellknown_url]
+            :log "wellknown_url $wellknown_url returned <pre>$d</pre>"
+            if {[dict get $d status] eq "200"} {
+                :log "challenge is available on server $wellknown_url\n"
+            } else {
+                :log "challenge can not retrieved from server: $wellknown_url\n"
+                return "invalid"
+            }
+
+            set httpStatus [:send_signed_request $challengeURL "{}"]
+            :log "challengeURL $challengeURL returned HTTP status $httpStatus<br>"
 
             #
             # ----- validate
             #
             :log "... validating the challenge... "
+            #:log "Reply Headers: [:printHeaders ${:replyHeaders}]<br>"
 
-            regexp {^<(.*)>;rel="up"} [ns_set iget ${:replyHeaders} "link"] . url
+            #
+            # Not sure, we have to get the "up" link, the result is
+            # identical to the $auth_url
+            #
+            #set link ""
+            #foreach {k v} [ns_set array ${:replyHeaders}] {
+            #    if {$k eq "link" && [regexp {^<(.*)>;rel="up"} $v . link]} {
+            #        break
+            #    }
+            #}
+            #if {$link ne ""} {
+            #    :log "obtained up link: $link, "
+            #} else {
+            #    :log "could not obtain up link from header, "
+            #}
+            #:log "uplink equal to auth_url: [string equal $link $auth_url]<br>"
+
             set status [dict get [json::json2dict ${:replyText}] status]
-
             :log "status: $status<br>"
             #:log "<pre>$result</pre>[:printHeaders ${:replyHeaders}]<br>"
 
-            # check until validation is finished
+            # check until validation is finished (max 20 times)
+            set count 0
+            #set link $challengeURL
             while {$status eq "pending"} {
                 :log "... retry after one second... "
                 ns_sleep 1
 
-                set id [ns_http queue $url]
-                ns_http wait -status S -result R -headers ${:replyHeaders} $id
-                set :nonce [ns_set iget ${:replyHeaders} "replay-nonce"]
+                set httpStatus [:send_signed_request $auth_url ""]
+                :log "$auth_url returned HTTP status $httpStatus<br>"
 
-                set status [dict get [json::json2dict $R] status]
+                set status [dict get [json::json2dict ${:replyText}] status]
                 :log "status: $status<br>"
                 if {$status ni {"valid" "pending"}} {
-                    :log "<pre>$R</pre>[:printHeaders ${:replyHeaders}]<br>"
+                    :log "<pre>${:replyText}</pre>[:printHeaders ${:replyHeaders}]<br>"
                     break
                 }
+                # safety belt to avoid in the worst case endless loops.
+                if {[incr count] > 2} break
             }
             return $status
         }
@@ -419,7 +489,7 @@ namespace eval ::letsencrypt {
         # ----- get certificate ----- #
         # ########################### #
 
-        :method certificateRequest {} {
+        :method certificateRequest {finalizeURL} {
 
             :log "<br>Generating RSA key pair for SSL certificate... "
 
@@ -428,49 +498,48 @@ namespace eval ::letsencrypt {
             #
             for {set count 0} {$count < 10} {incr count} {
 
-                set csrViaOpenSLL 1
-                if {$csrViaOpenSLL} {
-                    set csrConfFile $::letsencrypt::sslpath/${:domain}.csr.conf
-                    set csrFile     $::letsencrypt::sslpath/${:domain}.csr
-                    set keyFile     $::letsencrypt::sslpath/${:domain}.key
+                set csrConfFile $::letsencrypt::sslpath/${:domain}.csr.conf
+                set csrFile     $::letsencrypt::sslpath/${:domain}.csr
+                set keyFile     $::letsencrypt::sslpath/${:domain}.key
 
-                    exec -ignorestderr openssl genrsa -out $keyFile 2048
-                    set :certPrivKey [:readFile $keyFile]
+                exec -ignorestderr -- openssl genrsa -out $keyFile 2048
+                set :certPrivKey [:readFile $keyFile]
 
-                    lassign [exec openssl version -d] _ openssldir
-                    file copy -force [file join $openssldir openssl.cnf] $csrConfFile
-                    if {[llength ${:sans}] > 0} {
-                        set altNames {}; foreach alt ${:sans} {lappend altNames DNS:$alt}
-                        :writeFile -append $csrConfFile "\n\[SAN\]\nsubjectAltName=[join $altNames ,]\n"
-                        set extensions [list -reqexts SAN -extensions SAN]
-                    } else {
-                        set extensions {}
-                    }
-                    exec openssl req -new -sha256 -outform DER {*}$extensions \
-                        -subj "/CN=${:domain}" -key $keyFile -config $csrConfFile -out $csrFile
-                    set csr [:readFile -binary $::letsencrypt::sslpath/${:domain}.csr]
-
+                lassign [exec openssl version -d] _ openssldir
+                file copy -force [file join $openssldir openssl.cnf] $csrConfFile
+                if {[llength ${:sans}] > 0} {
+                    set altNames {}; foreach alt ${:sans} {lappend altNames DNS:$alt}
+                    :writeFile -append $csrConfFile "\n\[SAN\]\nsubjectAltName=[join $altNames ,]\n"
+                    set extensions [list -reqexts SAN -extensions SAN]
                 } else {
-                    set cert_key [pki::rsa::generate 2048]
-                    set csr [pki::pkcs::create_csr $cert_key [list CN ${:domain}] 0]
-                    set :certPrivKey [pki::key $cert_key]
+                    set extensions {}
                 }
+                exec openssl req -new -sha256 -outform DER {*}$extensions \
+                    -subj "/CN=${:domain}" -key $keyFile -config $csrConfFile -out $csrFile
+                set csr [:readFile -binary $::letsencrypt::sslpath/${:domain}.csr]
+
                 :log "DONE<br>"
                 :log "Getting the certificate for domain ${:domain}, SANs ${:sans}... "
 
-                set csr64 [ns_base64urlencode $csr]
-                set payload [subst {{"resource": "new-cert", "csr": "$csr64", "authorizations": "${:authorization}"}}]
-                set httpStatus [:postJwsRequest [:URL new-cert] $payload]
+                set csr64 [ns_base64urlencode -binary $csr]
+                set payload [subst {{"csr": "$csr64"}}]
+                set httpStatus [:send_signed_request $finalizeURL $payload]
+
                 :log "returned HTTP status $httpStatus<br>"
 
                 if {$httpStatus eq "400"} {
                     :log "Certificate request failed. Generating new RSA key pair... "
                     #ns_log notice "CSR-Request returned 400\n"
                     :log "[:printHeaders ${:replyHeaders}]<br>${:replyText}<br>"
-
+                    break
                 } else {
                     break
                 }
+            }
+            if {$httpStatus == 200} {
+                set finalizeDict [json::json2dict ${:replyText}]
+                set certificateURL [dict get $finalizeDict certificate]
+                set httpStatus [:send_signed_request $certificateURL ""]
             }
             return $httpStatus
         }
@@ -484,30 +553,32 @@ namespace eval ::letsencrypt {
 
             :log "<br>Generate the certificate under $::letsencrypt::sslpath...<br>"
 
-            ns_log notice  "Storing certificate under $::letsencrypt::sslpath/${:domain}.cer"
-            :writeFile -binary $::letsencrypt::sslpath/${:domain}.cer ${:replyText}
+            set cert ${:replyText}
 
-            puts "Converting the certificate to PEM format to $::letsencrypt::sslpath/${:domain}.crt"
-            exec openssl x509 -inform der \
-                -in $::letsencrypt::sslpath/${:domain}.cer \
-                -out $::letsencrypt::sslpath/${:domain}.crt
-            set cert [:readFile $::letsencrypt::sslpath/${:domain}.crt]
+            #ns_log notice  "Storing certificate under $::letsencrypt::sslpath/${:domain}.cer"
+            #:writeFile $::letsencrypt::sslpath/${:domain}.pem ${:replyText}
+
+            #puts "Converting the certificate to PEM format to $::letsencrypt::sslpath/${:domain}.crt"
+            #exec openssl x509 -inform der \
+            #    -in $::letsencrypt::sslpath/${:domain}.cer \
+            #    -out $::letsencrypt::sslpath/${:domain}.crt
+            #set cert [:readFile $::letsencrypt::sslpath/${:domain}.crt]
 
             #
             # Build certificate in the file system. Backup old file if necessary.
             #
             set :certPemFile $::letsencrypt::sslpath/${:domain}.pem
-            :backup ${:certPemFile}
 
             # Save certificate and private key in single file in directory
             # of nsssl module.
+            :backup ${:certPemFile}
 
             ns_log notice  "Combining certificate and private key to ${:certPemFile}"
             :writeFile ${:certPemFile} "${:certPrivKey}$cert"
 
-            ns_log notice  "Deleting ${:domain}.cer and ${:domain}.crt under $::letsencrypt::sslpath/"
-            file delete $::letsencrypt::sslpath/${:domain}.cer
-            file delete $::letsencrypt::sslpath/${:domain}.crt
+            #ns_log notice  "Deleting ${:domain}.cer and ${:domain}.crt under $::letsencrypt::sslpath/"
+            #file delete $::letsencrypt::sslpath/${:domain}.cer
+            #file delete $::letsencrypt::sslpath/${:domain}.crt
 
             #
             # Get certificate chain; the Let's Encrypt certificates
@@ -521,12 +592,11 @@ namespace eval ::letsencrypt {
             #
             # https://www.identrust.com/certificates/trustid/root-download-x3.html
             #
-            :log "Obtaining certificsate chain ... "
-            set id [ns_http queue https://letsencrypt.org/certs/lets-encrypt-x3-cross-signed.pem.txt]
-            ns_http wait -status S -result R $id
-            :log "returned HTTP status $S<br>"
+            :log "Obtaining certificate chain ... "
+            set d [ns_http run https://letsencrypt.org/certs/lets-encrypt-x3-cross-signed.pem.txt]
+            :log "returned HTTP status [dict get $d status]<br>"
 
-            :writeFile -append ${:certPemFile} $R
+            :writeFile -append ${:certPemFile} [dict get $d body]
 
             #
             # Add DH parameters
@@ -584,7 +654,7 @@ namespace eval ::letsencrypt {
                     #
                     append C {
                         #
-                        # In order to install nsssl gobally to your
+                        # In order to install nsssl globally to your
                         # server, uncomment the following lines
                         #
                         ns_section "ns/modules"
@@ -674,16 +744,15 @@ namespace eval ::letsencrypt {
             set :startUrl "[ns_conn proto]://${:domain}[ns_conn url]"
 
             set config {
-                staging    {url https://acme-staging.api.letsencrypt.org/directory}
-                production {url https://acme-v01.api.letsencrypt.org/directory}
+                staging    {url https://acme-staging-v02.api.letsencrypt.org/directory}
+                production {url https://acme-v02.api.letsencrypt.org/directory}
             }
 
             #
             # Make sure, the sslpath exists
             #
             file mkdir $::letsencrypt::sslpath
-
-            set signatureKeyFile $::letsencrypt::sslpath/letsencrypt-$::letsencrypt::API-account-signature.key
+            set :accoutKeyFile   $::letsencrypt::sslpath/letsencrypt-$::letsencrypt::API-account.key
 
             #
             # Start output
@@ -698,21 +767,30 @@ namespace eval ::letsencrypt {
             #
             # Create or reuse an account
             #
-            if {[file exists $signatureKeyFile]} {
+            if {[file exists ${:accoutKeyFile}]} {
                 #
                 # We have already registered in the past successfully at
                 # Let's Encrypt and signed the agreement.
                 #
-                :log "Reuse existing account registration at Let's Encrypt<br>"
+                :log "Reuse existing account registration at Let's Encrypt (${:accoutKeyFile})<br>"
 
-                eval [:readFile $signatureKeyFile]
-                set :rsa_key $rsa_key
-                set :modulus [ns_base64urlencode [binary format A* [::pki::_dec_to_ascii [dict get ${:rsa_key} n]]]]
-                set :exponent [ns_base64urlencode [binary format A* [::pki::_dec_to_ascii [dict get ${:rsa_key} e]]]]
+                :parseAccountKey
+                :getNonce
+
+                set payload [subst {{"termsOfServiceAgreed": true, "onlyReturnExisting": true, "contact": \["mailto:webmaster@${:domain}"\]}}]
+                set status [:send_signed_request [:URL newAccount] $payload]
+
+                if {$status eq "400"} {
+                    :abortMsg $status "authorization for existing account failed"
+                    return
+                } else {
+                    set :kid [ns_set iget ${:replyHeaders} "location"]
+                    :log "<pre>registration headers contained kid ${:kid}\n</pre>"
+                }
 
             } else {
 
-                set status [:registerNewAccount $config]
+                set status [:registerNewAccount]
                 if {$status >= 400} {
                     :abortMsg $status "Registration"
                     return
@@ -723,20 +801,44 @@ namespace eval ::letsencrypt {
                     :abortMsg $status "Agreement"
                     return
                 }
-                :writeFile $signatureKeyFile [list set rsa_key ${:rsa_key}]\n
             }
 
             #
-            # Authorize and validate domains for this account
+            # Create a new order for the domains
             #
             file delete -force [ns_server pagedir]/.well-known
             file mkdir [ns_server pagedir]/.well-known
 
+            :log "Creating new order...<br>"
+            set ids {}
             foreach domain ${:domains} {
-                set status [:authorizeDomain $domain]
-                if {$status eq "invalid"} {
+                lappend ids [subst {{"type": "dns", "value": "$domain"}}]
+            }
+            set payload [subst {{"identifiers": \[[join $ids ,]\]}}]
+            :log "... payload: <pre>$payload</pre>"
+
+            set httpStatus [:send_signed_request [:URL newOrder] $payload]
+            if {$httpStatus >= 400} {
+                :abortMsg $httpStatus "Order failed"
+                return
+            }
+            set orderDict [json::json2dict ${:replyText}]
+            set authorizations [dict get $orderDict authorizations]
+            set identifiers [dict get $orderDict identifiers]
+            set orderFinalizeURL [dict get $orderDict finalize]
+
+            #:log "<pre>authorizations:\n$authorizations\norderFinalizeURL:$orderFinalizeURL</pre>"
+
+            if {[llength $authorizations] != [llength ${:domains}]} {
+                :abortMsg $httpStatus "number of domains ([llength ${:domains}]) differs from number of authorizations ([llength $authorizations])"
+                return
+            }
+
+            foreach domain ${:domains} auth_url $authorizations id $identifiers {
+                set status [:authorizeDomain $auth_url [dict get $id value]]
+                if {$status in {invalid}} {
                     :log [subst {
-                        Validation of domain $domain failed.
+                        Validation of domain $domain failed (final status $status).
                         <p>Please restart the procedure at <a href="${:startUrl}">${:startUrl}</a>
                     }]
                     return
@@ -745,11 +847,10 @@ namespace eval ::letsencrypt {
 
             file delete -force [ns_server pagedir]/.well-known
 
-
             #
             # Get certificate
             #
-            set status [:certificateRequest]
+            set status [:certificateRequest $orderFinalizeURL]
             if {$status >= 400} {
                 :abortMsg $status "Certificate request"
                 return
