@@ -140,10 +140,11 @@ namespace eval ::letsencrypt {
             if {[file exists $fileName]} {
                 #
                 # If the base file exists, make a backup based on the
-                # content (using a sha256 checksum). Using checksums is
-                # independent of timestamps and makes sure to prevent loss
-                # of data (e.g. config files). If we have already a backup
-                # file, there is nothing to do.
+                # content (using a sha256 checksum). Using checksums
+                # is independent of timestamps and makes sure to
+                # prevent loss of data (e.g. configuration files). If
+                # we have already a backup file, there is nothing to
+                # do.
                 #
                 set backupFileName $fileName.[ns_md file -digest sha256 $fileName]
                 if {![file exists $backupFileName]} {
@@ -565,7 +566,7 @@ namespace eval ::letsencrypt {
             #set cert [:readFile $::letsencrypt::sslpath/${:domain}.crt]
 
             #
-            # Build certificate in the file system. Backup old file if necessary.
+            # Build certificate in the filesystem. Backup old file if necessary.
             #
             set :certPemFile $::letsencrypt::sslpath/${:domain}.pem
 
@@ -717,7 +718,7 @@ namespace eval ::letsencrypt {
                 #
                 # Nothing has changed.
                 #
-                :log {No need to update the NaviServer config file.<br>}
+                :log {No need to update the NaviServer configuration file.<br>}
             }
         }
 
@@ -857,7 +858,7 @@ namespace eval ::letsencrypt {
             }
 
             #
-            # Install certificate and update configuration
+            # Install certificate and update configuration file
             #
             :certificateInstall
             :updateConfiguration
