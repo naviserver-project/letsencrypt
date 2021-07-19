@@ -1,7 +1,7 @@
 Let's Encrypt ACME client for NaviServer
 ========================================
 
-Release 0.5
+Release 0.6
 -----------
 
     Florian Hanika <florian.hanika@gmail.com>
@@ -64,14 +64,31 @@ Installation:
 
 Users might want to run "make install" from this directory to install
 the script in the page dir. This is ok for non-public servers, but
-otherwise please thinks about a proper space where to place
+otherwise please think about a proper space where to place
 "letsencrypt.tcl"
 
 OpenACS users might wish to copy it to packages/acs-subsite/www/admin/
 such that only admins can execute it. 
 
-
 Configuration:
 
 See the top section of "letsencrypt.tcl".
 
+To activate the module add the following section to your NaviServer
+configuration script.
+
+    ns_section ns/server/${server}/modules {
+       ns_param letsencrypt tcl
+    }
+    ns_section ns/server/${server}/module/letsencrypt {
+       #
+       # Provide one or more domain names (latter for multi-domain SAN
+       # certificates). These values are a default in case the domains
+       # are not provided by other means (e.g. "letsencrypt.tcl").  In
+       # case multiple NaviServer virtual hosts are in used, this
+       # definition must be on the ${server}, which is used for
+       # obtaining updates (e.g. main site) although it retrieves a
+       # certificate for many subsites.
+       #
+       #ns_param domains {} ;# e.g. "foo.com www.foo.com"
+    }

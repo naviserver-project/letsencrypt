@@ -2,6 +2,9 @@ ifndef NAVISERVER
     NAVISERVER  = /usr/local/ns
 endif
 
+MODNAME = letsencrypt
+TCL = letsencrypt-procs.tcl
+
 include  $(NAVISERVER)/include/Makefile.module
 
 install:
