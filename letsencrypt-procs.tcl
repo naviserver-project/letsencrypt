@@ -185,7 +185,7 @@ namespace eval ::letsencrypt {
             set :nonce [ns_set iget ${:replyHeaders} "replay-nonce"]
 
             if {$nolog} {
-                :log "<p>reply from letsencrypt [string length${:replyText}] bytes</p>"
+                :log "<p>reply from letsencrypt [string length ${:replyText}] bytes</p>"
                 #ns_log notice "letsencrypt: reply from letsencrypt:\n${:replyText}"
             } else {
                 :log "<pre>reply from letsencrypt:\n${:replyText}</pre>"
