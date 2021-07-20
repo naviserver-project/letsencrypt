@@ -7,5 +7,5 @@ TCL = letsencrypt-procs.tcl
 
 include  $(NAVISERVER)/include/Makefile.module
 
-install:
-	$(INSTALL_SH) letsencrypt.tcl $(INSTSRVPAG)/	
+#install:
+#	$(INSTALL_SH) letsencrypt.tcl $(INSTSRVPAG)/

@@ -62,17 +62,16 @@ c) share the same ".well-known" directory on the top-level
 
 Installation:
 
-Users might want to run "make install" from this directory to install
-the script in the page dir. This is ok for non-public servers, but
-otherwise please think about a proper space where to place
-"letsencrypt.tcl"
-
-OpenACS users might wish to copy it to packages/acs-subsite/www/admin/
-such that only admins can execute it. 
+Run "make install" from the letsencrypt module directory.  When
+letsencrypt should be called interactively, you might consider copying
+the "letsencrypt.tcl" on a web-accessible place on your server and
+configuring the access rights to it.  OpenACS users might wish to copy
+"letsencrypt.tcl" to packages/acs-subsite/www/admin/ such that only
+admins can execute it.
 
 Configuration:
 
-See the top section of "letsencrypt.tcl".
+See the top section of the script "letsencrypt.tcl".
 
 To activate the module add the following section to your NaviServer
 configuration script.
