@@ -63,7 +63,8 @@ namespace eval ::letsencrypt {
             }]
         }
 
-        :method log {msg} {
+        :method log {args} {
+            set msg [join $args " "]
             if {!${:background}} {
                 ::ns_write $msg
             } else {
@@ -142,7 +143,7 @@ namespace eval ::letsencrypt {
         # ----- post JWS request of given payload ----- #
         # ############################################# #
 
-        :method send_signed_request {{-method POST} url payload} {
+        :method send_signed_request {{-nolog:switch false} {-method POST} url payload} {
             set payload64 [ns_base64urlencode -binary $payload]
             #
             # "kid" and "jwk" are mutually exclusive
@@ -183,7 +184,12 @@ namespace eval ::letsencrypt {
             set :replyText [dict get $d body]
             set :nonce [ns_set iget ${:replyHeaders} "replay-nonce"]
 
-            :log "<pre>reply from letsencrypt:\n${:replyText}</pre>"
+            if {$nolog} {
+                :log "<p>reply from letsencrypt [string length${:replyText}] bytes</p>"
+                #ns_log notice "letsencrypt: reply from letsencrypt:\n${:replyText}"
+            } else {
+                :log "<pre>reply from letsencrypt:\n${:replyText}</pre>"
+            }
             return [dict get $d status]
         }
 
@@ -196,9 +202,10 @@ namespace eval ::letsencrypt {
             if {!${:background}} {
                 ns_headers 200 text/html
             }
-            :log {<!DOCTYPE html><html lang="en"><head><title>NaviServer Let's Encrypt client</title></head><body>}
-            :log "<h3>Obtaining a certificate from Let's Encrypt using \
-                  the [string totitle ${:API}] API:</h3>"
+            :log \
+                {<!DOCTYPE html><html lang="en"><head><title>NaviServer Let's Encrypt client</title></head><body>} \
+                "<h3>Obtaining a certificate from Let's Encrypt using" \
+                "the [string totitle ${:API}] API:</h3>"
         }
 
         :method URL {kind} {
@@ -278,8 +285,9 @@ namespace eval ::letsencrypt {
             # Generate thumbprint from the JSON Web Key (:jwk)
             #
             set :thumbprint64 [ns_md string -digest sha256 -encoding base64url ${:jwk}]
-            :log "<br><pre>jwk: ${:jwk}\n"
-            :log "thumbprint64: ${:thumbprint64}\n"
+            :log \
+                "<br><pre>jwk: ${:jwk}\n" \
+                "thumbprint64: ${:thumbprint64}\n"
 
             #:log "<pre>jwk ${:jwk}\nthumbprint64: ${:thumbprint64}</pre>"
         }
@@ -290,8 +298,9 @@ namespace eval ::letsencrypt {
 
         :method registerNewAccount {} {
 
-            :log "Register new account at Let's Encrypt... "
-            :log "generating RSA key pair...<br>"
+            :log \
+                "Register new account at Let's Encrypt... " \
+                "generating RSA key pair...<br>"
 
             #
             # Repeat max 10 times until registration was successful
@@ -522,7 +531,7 @@ namespace eval ::letsencrypt {
             if {$httpStatus == 200} {
                 set finalizeDict [json::json2dict ${:replyText}]
                 set certificateURL [dict get $finalizeDict certificate]
-                set httpStatus [:send_signed_request $certificateURL ""]
+                set httpStatus [:send_signed_request -nolog $certificateURL ""]
             }
             return $httpStatus
         }
@@ -691,9 +700,13 @@ namespace eval ::letsencrypt {
             #
             if {$origConfig ne $C} {
                 if {![file writable [ns_info config]]} {
-                    :log "<p><strong>Warning:</strong> cannot update [ns_info config] since it is not writable<p>"
+                    :log \
+                        "<p><strong>Warning:</strong> cannot update [ns_info config]" \
+                        "since it is not writable<p>"
                 } elseif {${:API} eq "staging"} {
-                    :log "<p><strong>Warning:</strong> no automated updates on [ns_info config] when using the 'staging' environment<p>"
+                    :log \
+                        "<p><strong>Warning:</strong> no automated updates on [ns_info config]" \
+                        "when using the 'staging' environment<p>"
                 } else {
                     #
                     # Make first a backup of old config file ...
@@ -723,19 +736,19 @@ namespace eval ::letsencrypt {
         # ----- MAIN METHOD ----- #
         # ########################## #
         :public method getCertificate {} {
-            
+
             ns_log notice "letsencrypt client: domains <${:domains}> background ${:background}"
-            
+
             if {${:domains} eq ""} {
                 #
                 # Are values for the domains specified in the
                 # NaviServer configuration file?
                 #
                 set :domains [ns_config ns/server/[ns_info server]/module/letsencrypt domains]
-                ns_log notice "letsencrypt client: domains from NaviServer configuration file: <${:domains}>"
+                #ns_log notice "letsencrypt client: domains from NaviServer configuration file: <${:domains}>"
 
             }
-            
+
             if {${:domains} eq "" && [ns_conn isconnected]} {
                 #
                 # Still no values. Try to get it from the query parameters
@@ -748,8 +761,8 @@ namespace eval ::letsencrypt {
                 # (or via query parameters), we have all data we
                 # need.
             }
-            
-            ns_log notice "letsencrypt client: domains 2 <${:domains}> background ${:background}"
+
+            ns_log notice "letsencrypt client: domains <${:domains}> background ${:background}"
             if {${:domains} eq ""} {
                 #
                 # If we have still no values, provide the user with a
@@ -890,11 +903,25 @@ namespace eval ::letsencrypt {
             :certificateInstall
             :updateConfiguration
 
-            :log [ns_trim -delimiter | [subst {
-                |<br>To use the new certificate, restart your NaviServer instance
-                |and check results on <a href="https://${:domain}">https://${:domain}</a>.
-                |<p>
-            }]]
+            if {${:API} eq "production"} {
+                #
+                # Everything was updated, We can trigger the reload
+                # operation by sending SIGHUP to the nsd process
+                #
+                ns_kill [pid] 1
+                :log [ns_trim -delimiter | [subst {
+                    |<br>The new certificate is installed and was
+                    |reloaded via SIGHUP. For old versions of
+                    |NaviServer, restart your NaviServer instance and
+                    |check results on
+                    |<a href="https://${:domain}">https://${:domain}</a>.
+                    |<p> }]]
+
+                :log "<p>Certificate were reloaded by sending SIGHUP to nsd"
+            } else {
+                :log "<p><strong>Warning:</strong> no automated reloading" \
+                    "when using the 'staging' environment<p>"
+            }
         }
     }
 }
