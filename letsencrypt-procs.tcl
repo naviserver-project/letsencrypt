@@ -592,11 +592,13 @@ namespace eval ::letsencrypt {
             #
             # https://www.identrust.com/certificates/trustid/root-download-x3.html
             #
-            :log "Obtaining certificate chain ... "
-            set d [ns_http run https://letsencrypt.org/certs/lets-encrypt-x3-cross-signed.pem.txt]
-            :log "returned HTTP status [dict get $d status]<br>"
-
-            :writeFile -append ${:certPemFile} [dict get $d body]
+            #set letsencrypt_intermediate https://letsencrypt.org/certs/lets-encrypt-x3-cross-signed.pem.txt
+            #set letsencrypt_intermediate https://letsencrypt.org/certs/trustid-x3-root.pem.txt
+            #:log "Obtaining certificate chain ... "
+            #set d [ns_http run $letsencrypt_intermediate]
+            #:log "returned HTTP status [dict get $d status]<br>"
+            #
+            #:writeFile -append ${:certPemFile} [dict get $d body]
 
             #
             # Add DH parameters
@@ -736,7 +738,20 @@ namespace eval ::letsencrypt {
         # ----- MAIN METHOD ----- #
         # ########################## #
         :public method getCertificate {} {
-
+            #
+            # This method does all the steps required to obtain a
+            # certificate, such as
+            #
+            # - selecting the API (production or staging),
+            # - registering a new account if necessary,
+            # - create public and private key for the account,
+            # - issuing a certificate request,
+            # - obtaining the certificate, and
+            # - installing the certificate.
+            #
+            # If called interactivaly, the progress is logged to the
+            # console, otherwise just into the system log.
+            #
             ns_log notice "letsencrypt client: domains <${:domains}> background ${:background}"
 
             if {${:domains} eq ""} {
