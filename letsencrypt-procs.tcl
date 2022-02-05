@@ -12,9 +12,10 @@ namespace eval ::letsencrypt {
         # state and configuration variables
         :property {domains ""}
         :property {log ""}
-        :property {API staging}
+        :property {API staging}   ;# "staging" or "production"
         :property {sslpath ""}
         :property {background:switch false}
+        :property {key_type rsa}  ;# "rsa" or "ecdsa"
 
         # state variables
         :variable domain
@@ -474,6 +475,20 @@ namespace eval ::letsencrypt {
             return $status
         }
 
+        :method requireKeyFile {keyFile} {
+            if {![file exists $keyFile]} {
+                if {${:key_type} eq "rsa"} {
+                    ns_log notice "call: openssl genrsa -out $keyFile 2048"
+                    exec openssl genrsa -out $keyFile 2048
+                    #openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out $keyFile
+                    # .... maybe add in the future: -aes256 -pass pass:password
+                } elseif {${:key_type} eq "ecdsa"} {
+                    #openssl genpkey -out $keyFile -algorithm EC -pkeyopt ec_paramgen_curve:P-256
+                    # prime256v1
+                    ns_crypto::eckey generate -name secp384r1 -pem $keyFile
+                }
+            }
+        }
 
         # ########################### #
         # ----- get certificate ----- #
@@ -481,33 +496,46 @@ namespace eval ::letsencrypt {
 
         :method certificateRequest {finalizeURL} {
 
-            :log "<br>Generating RSA key pair for SSL certificate... "
+            :log "<br>Generating key pair of type ${:key_type} for SSL certificate... "
+
+            set csrConfFile ${:sslpath}/${:domain}.csr.conf
+            set csrFile     ${:sslpath}/${:domain}.csr
+            if {${:key_type} eq "ecdsa"} {
+                set keyFile  ${:sslpath}/${:domain}.edcsa.key
+            } else {
+                set keyFile  ${:sslpath}/${:domain}.key
+            }
 
             #
             # Repeat max 10 times until certificate was successfully obtained
             #
             for {set count 0} {$count < 10} {incr count} {
 
-                set csrConfFile ${:sslpath}/${:domain}.csr.conf
-                set csrFile     ${:sslpath}/${:domain}.csr
-                set keyFile     ${:sslpath}/${:domain}.key
-
-                ns_log notice "call: openssl genrsa -out $keyFile 2048"
+                :requireKeyFile $keyFile
                 set :certPrivKey [:readFile $keyFile]
 
                 lassign [exec openssl version -d] _ openssldir
                 file copy -force [file join $openssldir openssl.cnf] $csrConfFile
                 if {[llength ${:sans}] > 0} {
-                    set altNames {}; foreach alt ${:sans} {lappend altNames DNS:$alt}
+                    set altNames [lmap alt ${:sans} {set _ DNS:$alt}]
                     :writeFile -append $csrConfFile "\n\[SAN\]\nsubjectAltName=[join $altNames ,]\n"
                     set extensions [list -reqexts SAN -extensions SAN]
                 } else {
                     set extensions {}
                 }
-                ns_log notice [subst {call: openssl req -new -sha256 -outform DER {*}$extensions \
-                                          -subj "/CN=${:domain}" -key $keyFile -config $csrConfFile -out $csrFile}]
-                exec openssl req -new -passout pass:"" -sha256 -outform DER {*}$extensions \
-                    -subj "/CN=${:domain}" -key $keyFile -config $csrConfFile -out $csrFile 2>@1
+                ns_log notice [subst {call: openssl req -new -sha256 -outform DER \
+                                          {*}$extensions \
+                                          -subj "/CN=${:domain}" \
+                                          -key $keyFile \
+                                          -config $csrConfFile \
+                                          -out $csrFile}]
+                exec openssl req -new -sha256 -outform DER -passout pass:"" \
+                    {*}$extensions \
+                    -subj "/CN=${:domain}" \
+                    -key $keyFile \
+                    -config $csrConfFile \
+                    -out $csrFile \
+                    2>@1
                 set csr [:readFile -binary ${:sslpath}/${:domain}.csr]
 
                 :log "DONE<br>"

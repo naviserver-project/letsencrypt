@@ -22,8 +22,12 @@ set enabled 1
 #     The certificate will be placed finally into this directory.
 #     Defaults to: "[ns_info home]/modules/nsssl"
 #
+# "-key_type":
+#     Can be "ecdsa" or "rsa". Eliptic curves (ecdsa) are preferred
+#     by letsencrypt.
+#
 # "-API":
-#     Can be "staging" (default) or "prodiction"
+#     Can be "staging" (default) or "production"
 #     Let's encrypt has several rate limits to avoid DOS
 #     situations: https://letsencrypt.org/docs/rate-limits/
 #
@@ -31,12 +35,18 @@ set enabled 1
 #     should consider using the "staging" API of letsencrypt instead
 #     of the "production" API to void these constraints.
 
+set api production
+#set api staging
+
+#set key_type rsa
+set key_type ecdsa
 
 set c [::letsencrypt::Client new \
-           -API "production" \
+           -key_type $key_type \
+           -API $api \
            -sslpath "[ns_info home]/modules/nsssl"]
 #
-# Produce page
+# Produce UI page
 #
 ns_set update [ns_conn outputheaders] "Expires" "now"
 
