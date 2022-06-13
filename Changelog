@@ -1,3 +1,11 @@
+commit faa34b3fcdcdba94a9bf0031f74f5a393cefdc5e
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2022-06-13
+
+    fix typo
+
+M	letsencrypt-procs.tcl
+
 commit cbce0f2f73e9b5f07903d16baefb90388d27fcc8
 Author: Gustaf Neumann <neumann@wu-wien.ac.at>
 Date:   2022-06-13
