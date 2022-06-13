@@ -192,33 +192,11 @@ Date:   2018-11-14
 
 M	letsencrypt.tcl
 
-commit 1e704a10a3c8f2b9504f87667904236b65ba699a
-Merge: 538e0fb 5a3157c
-Author: Gustaf Neumann <neumann@wu.ac.at>
-Date:   2018-11-08
-
-    Merged in khronosschoty/letsencrypt/khronosschoty/fixed-typo-the-command-ns_base64urlencod-1541618924078 (pull request #1)
-    
-    fixed typo the command "ns_base64urlencodel" should be "ns_base64urlencode"
-    
-    Approved-by: Gustaf Neumann <neumann@wu.ac.at>
-
 commit 538e0fb634fada3d15b27270082ecd68984150ce
 Author: Gustaf Neumann <neumann@wu-wien.ac.at>
 Date:   2018-11-08
 
     fix typo identified by Vasily Sora
-
-M	letsencrypt.tcl
-
-commit 5a3157cf262ad626ee5bfcdd7a2d7aeb07adfcde
-Author: Vasily Sora <khronosschoty@posteo.org>
-Date:   2018-11-07
-
-    fixed typo the command "ns_base64urlencodel" should be "ns_base64urlencode"
-    
-    --HG--
-    branch : khronosschoty/fixed-typo-the-command-ns_base64urlencod-1541618924078
 
 M	letsencrypt.tcl
 
