@@ -1,0 +1,351 @@
+commit cbce0f2f73e9b5f07903d16baefb90388d27fcc8
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2022-06-13
+
+    Improved log messages
+
+M	letsencrypt-procs.tcl
+
+commit 0170e7971357c08073ec95e4bdae4cc18d6e2044
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2022-02-05
+
+    added option to produce certificates with ecdsa
+    
+    Prior to this change, all certificates were using RSA keys.
+    Since a while, keys based on elliptic curves became the preference
+    of letsencrypt.
+
+M	letsencrypt-procs.tcl
+M	letsencrypt.tcl
+
+commit 06fe1cd66759b3c3b3ec2da8686895ee850c24b5
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2021-12-29
+
+    Removed obtaining the intermediate cross signed certificate
+    
+    Obtaining this certificated does not seem to be required anymore.
+    Improved source code documentation.
+
+M	letsencrypt-procs.tcl
+
+commit 1f276a2ad571cbf41bfc3e686e4c195a2d642913
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2021-07-20
+
+    fix typo
+
+M	letsencrypt-procs.tcl
+
+commit 774ff5eb06bc4a3b6e05a8a7c5169fcd32ea53af
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2021-07-20
+
+    Don't install the script "letsencrypt.tcl" per default
+
+M	Makefile
+M	README
+
+commit d56df865b07b4985b2ce10f4f670fef9e4a28d86
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2021-07-20
+
+    added support for multi-arg log calls, improve wording
+    
+    multi-line log calls can improve line-breaking for long messages.
+
+M	letsencrypt-procs.tcl
+
+commit e9b5197171158206ec29b3cf0be2c08c01a678c8
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2021-07-19
+
+    Larger overhaul:
+    
+    - Added ability to obtain certificate in the background
+      (useful for automated certificate updates). Previously
+      it was just usable via the "letsencrypt.tcl" command.
+    
+    - Fixed behavior with OpenSSL 3.0: The "openssl" command
+      behavior has changed and became more picky. It was
+      necessary to pass the option "-passout" to "openssl req -new ...".
+      Previously, this was not necessary.
+    
+    - Added default configuration for "domains" (including multidomain SAN
+      domains) via NaviServer configuration file
+    
+    - Follow usual guidelines for Tcl modules: activate/deactivate module
+      via NaviServer configuration file (see README)
+    
+    - Made ACMEv2 client better configurable (especially useful for
+      automated updates)
+    
+    - Preserve "production" setup and to not clobber with "staging" certificates
+      * Use a different name for the .pem file (prefixed with "staging")
+      * Perform no automated updates of the server config file (might break
+        running web site)
+    
+    - Bumped version number to 0.6
+
+M	Makefile
+M	README
+A	letsencrypt-procs.tcl
+M	letsencrypt.tcl
+
+commit 7a0cf71e1b2be6b3867d0df62169cd877c2fa706
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2021-01-10
+
+    improve spelling
+
+M	README
+
+commit 6532feaca4238eb8365780d07d96b8355395cc6c
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2020-08-11
+
+    minor changes in wording
+
+M	letsencrypt.tcl
+
+commit 26507d6a880674da16bda7363bced0bac477640c
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2019-12-12
+
+    Major overhaul of the letsencrypt module to support ACME v2
+    
+    ACME (the Automated Certificate Management Environment, [1]) is the
+    protocol used for certificate management on letsencrypt.org. The API
+    version v was released on 2016 but was updated in 2018 by ACME v2, is
+    not backwards compatible with v1. Letsencrypt announced in march 2018
+    to drop the support of ACME v1 in several steps:
+    
+    - Nov 2019: End of account registrations via ACME v1
+    - Jun 2020: End of new domain registrations via ACME v1
+    - Jun 2021: EOL ACME v1 certificate issuing
+    
+    The new version is based on its crypto requirements solely on OpenSSL,
+    it uses the NaviServer builtins and as well the "openssl" binary (the
+    usage of tcllib pki was dropped).  To avoid potential troubles, use
+    this with a recent version of NaviServer (currently the tip version
+    form BitBucket) or with NaviServer 4.99.19 when this is released.
+    
+    -g
+    
+    Unfortunately, i was hit by account registrations issue
+    two days ago, so i had to implement v2 to be able to get new
+    certificates.
+    
+    [1] https://en.wikipedia.org/wiki/Automated_Certificate_Management_Environment
+    [2] https://community.letsencrypt.org/t/end-of-life-plan-for-acmev1/88430
+
+M	README
+M	letsencrypt.tcl
+
+commit d4a476f546475605885f87d5d3428f58006131d0
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2019-09-05
+
+    provide compatibility with NaviServer tip
+    improve error messages
+
+M	letsencrypt.tcl
+
+commit 43ba308dfcd3775af8d1b92df1987801c9d43cee
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2019-04-08
+
+    new method "log": write output written to console also to the system log
+
+M	letsencrypt.tcl
+
+commit df593cc4c695ef80d73017ca6d6e31d26d0bceb2
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2019-04-08
+
+    improve readability
+
+M	README
+
+commit cd7823c9c7d52856f52295dc3b2aecb8b050f778
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2019-04-08
+
+    improve README
+
+M	README
+
+commit f66e0aa1f51f9ee78b7f57a5452c1ddd3968d817
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2019-04-08
+
+    Add help for obtaining multi-domain attributes (SAN).
+
+M	README
+
+commit aa84e21eb84cf89b54ad3599ee9534daf7d5330e
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-11-14
+
+    fix typo
+
+M	letsencrypt.tcl
+
+commit 1e704a10a3c8f2b9504f87667904236b65ba699a
+Merge: 538e0fb 5a3157c
+Author: Gustaf Neumann <neumann@wu.ac.at>
+Date:   2018-11-08
+
+    Merged in khronosschoty/letsencrypt/khronosschoty/fixed-typo-the-command-ns_base64urlencod-1541618924078 (pull request #1)
+    
+    fixed typo the command "ns_base64urlencodel" should be "ns_base64urlencode"
+    
+    Approved-by: Gustaf Neumann <neumann@wu.ac.at>
+
+commit 538e0fb634fada3d15b27270082ecd68984150ce
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-11-08
+
+    fix typo identified by Vasily Sora
+
+M	letsencrypt.tcl
+
+commit 5a3157cf262ad626ee5bfcdd7a2d7aeb07adfcde
+Author: Vasily Sora <khronosschoty@posteo.org>
+Date:   2018-11-07
+
+    fixed typo the command "ns_base64urlencodel" should be "ns_base64urlencode"
+    
+    --HG--
+    branch : khronosschoty/fixed-typo-the-command-ns_base64urlencod-1541618924078
+
+M	letsencrypt.tcl
+
+commit 322c9d9bf4fa0a1c3444810927322b3b4bf2fe92
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-08-15
+
+    improve spelling
+
+M	letsencrypt.tcl
+
+commit e037e42c76f7f23da792f186be5e02a899c139bf
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-08-15
+
+    modernize code: use built-in ns_base64urlencode (requires 4.99.17) instead of own implementation
+
+M	letsencrypt.tcl
+
+commit 91f60bdf704f2259e5f23cff00fdc283d33ef966
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2017-12-31
+
+    change order of certificates in pem file (priv key first)
+
+M	letsencrypt.tcl
+
+commit 638831ac0610b889eb8d1813ed4dca2fe2e1188c
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2017-12-31
+
+    Don't hard-code openssl dir (many thanks to stefan sobernig)
+
+M	letsencrypt.tcl
+
+commit 9f6a3c2d69ef5dcc28749b29a0c89e28c5ae2294
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2017-09-16
+
+    Allow to use the same Let's Encrypt account for multiple domains
+
+M	letsencrypt.tcl
+
+commit f2838ea2a6841681909e16aa058093efa0ad1dab
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2017-09-15
+
+    Update dependencies: the module requires 4.99.15, since it uses "ns_driver info"
+
+M	README
+
+commit 927d1439b2fe3dd66fbbdf8fb51446f5e56f3554
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2017-09-13
+
+    Add usual NaviServer LICENSE
+
+A	LICENSE
+
+commit cf10595d01e937cd54f4df9f531f8f15d09c257e
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2017-09-13
+
+    Improving README file
+
+M	README
+
+commit 316eca3a4a8ea86af226021e898fb8c774850a40
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2017-09-13
+
+    whitespace changes
+
+M	letsencrypt.tcl
+
+commit a25fe9d71359537ae5ff08ddcfc77347c6033918
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2017-09-13
+
+    code overhaul
+    - keep account information data
+      (not necessary anymore to create on every request a new account)
+    - distinguish between staging account and production account
+    - make code object oriented:
+       * break up huge proc
+       * ease passing around of connection data (e.g. nonces etc)
+       * prepare for making the code run in the background
+         (by distinguishing between a WebClient and a BackgroundClient)
+         will in essence just require generalizing output; this
+         will be necessary to automatize certificate renewals
+
+M	README
+M	letsencrypt.tcl
+
+commit 15ace81491037199097fcb886beb9aebb2df8517
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2017-09-11
+
+    Add support for multi domain certificate and improve output
+
+M	README
+M	letsencrypt.tcl
+
+commit 95dbbb59da462f95617281b4f728c15efbb010d6
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2017-09-11
+
+    General overhaul
+    
+    - added better handling of backpup files
+    - added helper for implifying I/O
+    - avoid infinite loops
+    - added optional production of CSRs via openssl to
+      overcome shortcomings of tcllib pki package
+      (apparently no support of subjectAltName)
+    - less eager re-writing of config file
+    - bumped version to 0.2
+
+M	README
+M	letsencrypt.tcl
+
+commit 5606e4250ca6961d6d16c88ab90cfabda426ef82
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2017-09-10
+
+    Initial checkin
+
+A	Makefile
+A	README
+A	letsencrypt.tcl
