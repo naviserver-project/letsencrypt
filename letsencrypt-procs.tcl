@@ -561,7 +561,7 @@ namespace eval ::letsencrypt {
                 set finalizeDict [json::json2dict ${:replyText}]
                 set certificateURL [dict get $finalizeDict certificate]
                 set httpStatus [:send_signed_request -nolog $certificateURL ""]
-                :log "request to certficate URL $certificateURL returned HTTP status $httpStatus<br>"
+                :log "request to certificate URL $certificateURL returned HTTP status $httpStatus<br>"
                 :log "[:printHeaders ${:replyHeaders}]<br>${:replyText}<br>"
             }
             return $httpStatus
