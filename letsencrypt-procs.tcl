@@ -545,7 +545,8 @@ namespace eval ::letsencrypt {
                 set payload [subst {{"csr": "$csr64"}}]
                 set httpStatus [:send_signed_request $finalizeURL $payload]
 
-                :log "returned HTTP status $httpStatus<br>"
+                :log "request to finalize URL $finalizeURL returned HTTP status $httpStatus<br>"
+                :log [:printHeaders ${:replyHeaders}]
 
                 if {$httpStatus eq "400"} {
                     :log "Certificate request failed. Generating new RSA key pair... "
@@ -560,6 +561,8 @@ namespace eval ::letsencrypt {
                 set finalizeDict [json::json2dict ${:replyText}]
                 set certificateURL [dict get $finalizeDict certificate]
                 set httpStatus [:send_signed_request -nolog $certificateURL ""]
+                :log "request to certficate URL $certificateURL returned HTTP status $httpStatus<br>"
+                :log "[:printHeaders ${:replyHeaders}]<br>${:replyText}<br>"
             }
             return $httpStatus
         }
