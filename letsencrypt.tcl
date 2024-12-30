@@ -48,7 +48,7 @@ set c [::letsencrypt::Client new \
 #
 # Produce UI page
 #
-ns_set update [ns_conn outputheaders] "Expires" "now"
+ns_set iupdate [ns_conn outputheaders] "expires" "now"
 
 $c getCertificate
 $c destroy

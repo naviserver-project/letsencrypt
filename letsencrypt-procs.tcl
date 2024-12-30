@@ -93,7 +93,7 @@ namespace eval ::letsencrypt {
 
         :method readFile {{-binary:switch f} fileName} {
             set F [open $fileName r]
-            if {$binary} { fconfigure $F -encoding binary -translation binary }
+            if {$binary} { fconfigure $F -translation binary }
             set content [read $F]
             close $F
             return $content
@@ -106,7 +106,7 @@ namespace eval ::letsencrypt {
         :method writeFile {{-binary:switch f} {-append:switch f} fileName content} {
             set mode [expr {$append ? "a" : "w"}]
             set F [open $fileName $mode]
-            if {$binary} { fconfigure $F -encoding binary -translation binary }
+            if {$binary} { fconfigure $F -translation binary }
             puts -nonewline $F $content
             close $F
         }
@@ -172,8 +172,7 @@ namespace eval ::letsencrypt {
             }}]
             #:log "<pre>POST $url\n$data</pre>"
 
-            set queryHeaders [ns_set create]
-            ns_set update $queryHeaders "Content-type" "application/jose+json"
+            set queryHeaders [ns_set create "content-type" "application/jose+json"]
             set d [ns_http run -method POST -headers $queryHeaders -body $data $url]
 
             #

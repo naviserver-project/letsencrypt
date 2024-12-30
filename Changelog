@@ -294,7 +294,7 @@ Date:   2017-09-13
        * prepare for making the code run in the background
          (by distinguishing between a WebClient and a BackgroundClient)
          will in essence just require generalizing output; this
-         will be necessary to automatize certificate renewals
+         will be necessary to automate certificate renewals
 
 M	README
 M	letsencrypt.tcl
