@@ -473,8 +473,7 @@ namespace eval ::letsencrypt {
             }
             return $status
         }
-
-        :method requireKeyFile {keyFile} {
+       :method requireKeyFile {keyFile} {
             if {![file exists $keyFile]} {
                 if {${:key_type} eq "rsa"} {
                     ns_log notice "call: openssl genrsa -out $keyFile 2048"
@@ -635,6 +634,8 @@ namespace eval ::letsencrypt {
             #
             :log "Adding DH parameters to ${:certPemFile} (might take a while - wait for DONE message) ... "
             exec -ignorestderr -- openssl dhparam 2048 >> ${:certPemFile} 2> /dev/null
+            :log "Removing permissions for others"
+            file attributes ${:certPemFile} -permissions o-rwx
             :log " DONE<br><br>"
 
             :log "New certificate successfully installed in: <strong>${:certPemFile}</strong><br><br>"

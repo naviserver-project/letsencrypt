@@ -1,3 +1,12 @@
+commit fc756d8700fe4adc9bd80ed4547be5231eb14ea1
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2024-12-30
+
+    Improved Tcl9 compatibility
+
+M	letsencrypt-procs.tcl
+M	letsencrypt.tcl
+
 commit faa34b3fcdcdba94a9bf0031f74f5a393cefdc5e
 Author: Gustaf Neumann <neumann@wu-wien.ac.at>
 Date:   2022-06-13
